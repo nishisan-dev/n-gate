@@ -106,9 +106,14 @@ public class CustomContextWrapper implements Context {
         return context.req();
     }
 
+    private HttpAdapterServletResponse cachedResponse;
+
     @Override
     public HttpAdapterServletResponse res() {
-        return new HttpAdapterServletResponse(context.res());
+        if (this.cachedResponse == null) {
+            this.cachedResponse = new HttpAdapterServletResponse(context.res());
+        }
+        return this.cachedResponse;
     }
 
     @Override

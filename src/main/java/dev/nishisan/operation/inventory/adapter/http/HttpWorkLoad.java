@@ -19,8 +19,8 @@ package dev.nishisan.operation.inventory.adapter.http;
 import dev.nishisan.operation.inventory.adapter.http.synth.response.SyntHttpResponse;
 import groovy.lang.Closure;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  *
@@ -31,13 +31,13 @@ public class HttpWorkLoad {
 
     private final CustomContextWrapper context;
     private final HttpAdapterServletRequest request;
-    private final ConcurrentMap<String, Closure<?>> responseProcessors = new ConcurrentSkipListMap<>();
+    private final ConcurrentMap<String, Closure<?>> responseProcessors = new ConcurrentHashMap<>();
     private SyntHttpResponse upstreamResponse;
     private HttpAdapterServletResponse clientResponse;
-    private String body = new String();
+    private String body = "";
     private Boolean returnPipe = false;
 
-    private final ConcurrentMap<String, Object> objects = new ConcurrentSkipListMap<>();
+    private final ConcurrentMap<String, Object> objects = new ConcurrentHashMap<>();
     
     
     public void addObjects(Map<String,Object> objects){

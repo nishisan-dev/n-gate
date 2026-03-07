@@ -47,7 +47,7 @@ public class HttpRequestAdapter {
         try {
             if (request.getBodyAsBytes() != null
                     && request.getBodyAsBytes().length > 0) {
-                logger.debug("Body Size: " + request.getBodyAsBytes().length);
+                logger.debug("Body Size: [{}]", request.getBodyAsBytes().length);
 
                 //
                 // Temos um Body para Copiar.
@@ -69,11 +69,10 @@ public class HttpRequestAdapter {
                     requestBody = RequestBody.create(request.getBodyAsBytes());
                 }
 
-//            requestBody = RequestBody.create(body, mediaType);
-                logger.debug("Body: ContentType:[{}]", request.getContentType() + "charset=" + request.getCharacterEncoding());
-                logger.debug("----------------------------------------------------------");
-                logger.debug("\n" + new String(request.getBodyAsBytes()));
-                logger.debug("----------------------------------------------------------");
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Body: ContentType:[{}]", request.getContentType() + "charset=" + request.getCharacterEncoding());
+                    logger.debug("Body content length: [{}]", request.getBodyAsBytes().length);
+                }
             } else {
 
                 logger.info("Request BODY IS EMPTY");

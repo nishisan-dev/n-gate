@@ -52,7 +52,7 @@ public class HttpAdapterServletRequest extends HttpServletRequestWrapper {
         this.contentType = request.getContentType();
         this.characterEncoding = request.getCharacterEncoding();
         this.copyHeaders();
-        this.copyBody();
+        // Body é carregado sob demanda (lazy) em getBodyAsBytes()
         if (request.getCookies() != null) {
             this.cookies = List.of(request.getCookies());
         }
@@ -78,24 +78,6 @@ public class HttpAdapterServletRequest extends HttpServletRequestWrapper {
             String headerName = originalHeaders.nextElement();
             headers.putIfAbsent(headerName, super.getHeader(headerName));
         }
-    }
-
-    private void copyBody() {
-        try {
-            InputStream inputStream = this.getInputStream();
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                byteArrayOutputStream.write(buffer, 0, bytesRead);
-            }
-            this.body = byteArrayOutputStream.toByteArray();
-        } catch (IOException ex) {
-            //
-            // Omite
-            //
-        }
-
     }
 
     public void addHeader(String name, String value) {
@@ -132,15 +114,14 @@ public class HttpAdapterServletRequest extends HttpServletRequestWrapper {
         if (this.body == null) {
             InputStream inputStream = this.getInputStream();
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
                 byteArrayOutputStream.write(buffer, 0, bytesRead);
             }
-            return byteArrayOutputStream.toByteArray();
-        } else {
-            return this.body;
+            this.body = byteArrayOutputStream.toByteArray();
         }
+        return this.body;
     }
 
     public void addCookie(Cookie cookie) {

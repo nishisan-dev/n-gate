@@ -95,7 +95,7 @@ public class SyntHttpResponse implements HttpServletResponse {
      */
     private boolean characterEncodingSet = false;
 
-    private final ByteArrayOutputStream content = new ByteArrayOutputStream(1024);
+    private final ByteArrayOutputStream content = new ByteArrayOutputStream(8192);
 
     private final ServletOutputStream outputStream = new ResponseServletOutputStream(this.content);
 
