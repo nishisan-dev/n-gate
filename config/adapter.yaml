@@ -1,0 +1,47 @@
+---
+endpoints:
+  default:
+    listeners:
+      http:
+        listenAddress: "0.0.0.0"
+        listenPort: 9090
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "keycloak"
+        secured: false
+        secureProvider:
+          providerClass: "dev.nishisan.operation.inventory.adapter.auth.jwt.JWTTokenDecoder"
+          name: "local-keycloak-jwt"
+          options:
+            issuerUri: http://keycloak:8080/realms/inventory-dev
+            jwkSetUri: http://keycloak:8080/realms/inventory-dev/protocol/openid-connect/certs
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+    backends:
+      keycloak:
+        backendName: "keycloak"
+        xOriginalHost: null
+        endPointUrl: "http://keycloak:8080"
+        oauthClientConfig:
+          ssoName: "inventory-keycloak"
+          clientId: "inventory-adapter-client"
+          clientSecret: "inventory-adapter-secret"
+          userName: "inventory-svc"
+          password: "inventory-svc-pass"
+          tokenServerUrl: "http://keycloak:8080/realms/inventory-dev/protocol/openid-connect/token"
+          useRefreshToken: true
+          renewBeforeSecs: 30
+          authorizationServerUrl: null
+          authScopes:
+            - "openid"
+            - "profile"
+            - "email"
+
+    ruleMapping: "default/Rules.groovy"
+    ruleMappingThreads: 1
+    socketTimeout: 3600

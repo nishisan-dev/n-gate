@@ -1,0 +1,47 @@
+{
+  "realm": "inventory-dev",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "clients": [
+    {
+      "clientId": "inventory-adapter-client",
+      "name": "inventory-adapter-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "inventory-adapter-secret",
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "inventory-svc",
+      "enabled": true,
+      "firstName": "Inventory",
+      "lastName": "Service",
+      "email": "inventory-svc@local.dev",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "inventory-svc-pass",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
