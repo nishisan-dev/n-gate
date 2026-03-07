@@ -53,4 +53,12 @@ public class SpanWrapper {
     public Span tag(String k, String v) {
         return this.span.tag(k, v);
     }
+
+    public Span tag(String k, int v) {
+        return this.span.tag(k, String.valueOf(v));
+    }
+
+    public Span tag(String k, long v) {
+        return this.span.tag(k, String.valueOf(v));
+    }
 }
