@@ -1,0 +1,99 @@
+{
+  "timestamp": "2026-03-07 22:57:11",
+  "config": {
+    "baseline_url": "http://localhost:3080/",
+    "proxy_url": "http://localhost:9091/",
+    "total_requests": 1000,
+    "concurrency_levels": [
+      1,
+      10,
+      50
+    ]
+  },
+  "results": {
+    "baseline_c1": {
+      "rps": 3928.66,
+      "time_per_request": 0.255,
+      "time_per_request_concurrent": 0.255,
+      "transfer_rate": 1235.38,
+      "total_time": 0.255,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "p100": 1.0
+    },
+    "proxy_c1": {
+      "rps": 1165.65,
+      "time_per_request": 0.858,
+      "time_per_request_concurrent": 0.858,
+      "transfer_rate": 400.7,
+      "total_time": 0.858,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 1.0,
+      "p90": 1.0,
+      "p95": 1.0,
+      "p99": 1.0,
+      "p100": 2.0
+    },
+    "baseline_c10": {
+      "rps": 9580.65,
+      "time_per_request": 1.044,
+      "time_per_request_concurrent": 0.104,
+      "transfer_rate": 3012.67,
+      "total_time": 0.104,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 1.0,
+      "p90": 1.0,
+      "p95": 2.0,
+      "p99": 2.0,
+      "p100": 3.0
+    },
+    "proxy_c10": {
+      "rps": 5138.27,
+      "time_per_request": 1.946,
+      "time_per_request_concurrent": 0.195,
+      "transfer_rate": 1766.31,
+      "total_time": 0.195,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 2.0,
+      "p90": 3.0,
+      "p95": 4.0,
+      "p99": 5.0,
+      "p100": 8.0
+    },
+    "baseline_c50": {
+      "rps": 18644.54,
+      "time_per_request": 2.682,
+      "time_per_request_concurrent": 0.054,
+      "transfer_rate": 5862.83,
+      "total_time": 0.054,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 2.0,
+      "p90": 4.0,
+      "p95": 5.0,
+      "p99": 7.0,
+      "p100": 8.0
+    },
+    "proxy_c50": {
+      "rps": 6622.38,
+      "time_per_request": 7.55,
+      "time_per_request_concurrent": 0.151,
+      "transfer_rate": 2276.44,
+      "total_time": 0.151,
+      "complete_requests": 1000.0,
+      "failed_requests": 0.0,
+      "p50": 6.0,
+      "p90": 12.0,
+      "p95": 16.0,
+      "p99": 23.0,
+      "p100": 34.0
+    }
+  }
+}
