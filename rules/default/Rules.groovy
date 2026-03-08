@@ -6,28 +6,30 @@
 /**
  * This processor check if the response can be streamed
  */
-def binaryDataProcessor = {workload-> 
-    println('Processing...');
-    def contentSize = workload.upstreamResponse.getHeader("Content-Length");
-    if (contentSize){  
-        contentSize = contentSize.toLong();
-        if (contentSize > 100000){           
-            workload.clientResponse.addHeader('x-big', 'yes');
-            workload.returnPipe = true;
-        }else{
-            workload.clientResponse.addHeader('x-big', 'no');
-        }        
-    }
-    def contentType = workload.upstreamResponse.getHeader("Content-Type");
-    if (contentType.contains("image")){
-        workload.returnPipe = true;            
-        workload.clientResponse.addHeader('x-content-type', contentType);
-    }else{
-        workload.clientResponse.addHeader('x-content-type', 'none');
-    }    
+// def binaryDataProcessor = {workload-> 
+//     println('Processing...');
+//     def contentSize = workload.upstreamResponse.getHeader("Content-Length");
+//     if (contentSize){  
+//         contentSize = contentSize.toLong();
+//         if (contentSize > 100000){           
+//             workload.clientResponse.addHeader('x-big', 'yes');
+//             workload.returnPipe = true;
+//         }else{
+//             workload.clientResponse.addHeader('x-big', 'no');
+//         }        
+//     }
+//     def contentType = workload.upstreamResponse.getHeader("Content-Type");
+//     if (contentType.contains("image")){
+//         workload.returnPipe = true;            
+//         workload.clientResponse.addHeader('x-content-type', contentType);
+//     }else{
+//         workload.clientResponse.addHeader('x-content-type', 'none');
+//     }    
     
 
-}
+// }
+
+
 /**
  * Response processors são custosos, use com sabedoria
  */
