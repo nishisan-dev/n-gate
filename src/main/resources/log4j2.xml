@@ -2,11 +2,6 @@
 <Configuration status="WARN">
     <Appenders>
 
-        <RollingFile name="fileAppender" fileName="log/server.log" filePattern="log/server.%i.log.gz" append="true">
-            <PatternLayout pattern="[%5p] %d{dd-MMM-yyyy HH:mm:ss} [%C] - %m%n"/>
-            <SizeBasedTriggeringPolicy size="100mb" />
-        </RollingFile>
-
         <Console name="STDOUT" target="SYSTEM_OUT">
             <PatternLayout pattern="[%5p] %d{dd-MMM-yyyy HH:mm:ss} - %m%n"/>
         </Console>
@@ -15,16 +10,15 @@
     <Loggers>
 
         <AsyncLogger name="org.springframework" level="info" additivity="false">
-            <AppenderRef ref="fileAppender"/>
+            <AppenderRef ref="STDOUT"/>
         </AsyncLogger>
 
         <AsyncLogger name="com.google.api.client.http" level="info" additivity="false">
-            <AppenderRef ref="fileAppender"/>
+            <AppenderRef ref="STDOUT"/>
         </AsyncLogger>
 
         <Root level="debug">
             <AppenderRef ref="STDOUT"/>
-            <AppenderRef ref="fileAppender"/>
         </Root>
 
     </Loggers>
