@@ -76,19 +76,22 @@ import org.apache.logging.log4j.Logger;
  */
 public class HttpProxyManager {
 
-    // --- SSL estático compartilhado (evita recriação criptográfica por request) ---
+    // --- SSL estático compartilhado (evita recriação criptográfica por request)
+    // ---
     private static final X509TrustManager TRUST_ALL_MANAGER = new X509TrustManager() {
         @Override
-        public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) throws CertificateException {
+        public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType)
+                throws CertificateException {
         }
 
         @Override
-        public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) throws CertificateException {
+        public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType)
+                throws CertificateException {
         }
 
         @Override
         public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-            return new java.security.cert.X509Certificate[]{};
+            return new java.security.cert.X509Certificate[] {};
         }
     };
 
@@ -98,7 +101,7 @@ public class HttpProxyManager {
     static {
         try {
             SHARED_SSL_CONTEXT = SSLContext.getInstance("SSL");
-            SHARED_SSL_CONTEXT.init(null, new TrustManager[]{TRUST_ALL_MANAGER}, new java.security.SecureRandom());
+            SHARED_SSL_CONTEXT.init(null, new TrustManager[] { TRUST_ALL_MANAGER }, new java.security.SecureRandom());
             SHARED_SSL_FACTORY = SHARED_SSL_CONTEXT.getSocketFactory();
         } catch (NoSuchAlgorithmException | KeyManagementException ex) {
             throw new ExceptionInInitializerError("Failed to initialize shared SSLContext: " + ex.getMessage());
@@ -140,7 +143,8 @@ public class HttpProxyManager {
      * @throws NoSuchAlgorithmException
      * @throws KeyManagementException
      */
-    public OkHttpClient getHttpClientByListenerName(String name) throws NoSuchAlgorithmException, KeyManagementException {
+    public OkHttpClient getHttpClientByListenerName(String name)
+            throws NoSuchAlgorithmException, KeyManagementException {
         // Usa SSLContext e ConnectionPool compartilhados (inicializados estaticamente)
         if (this.httpClients.containsKey(name)) {
             logger.debug("Reusing Client:[{}]", name);
@@ -179,9 +183,14 @@ public class HttpProxyManager {
                          * adicionar o cabeçaho de autenticação
                          */
                         Request newRequest = original.newBuilder()
-                                //                            .header("User-Agent", "TELCOSTACK-" + backeEndConfiguration.getOauthClientConfig().getSsoName() + " v0.1")
-                                .header("Authorization", "Bearer " + oauthManager.getAccessToken(backeEndConfiguration.getOauthClientConfig().getSsoName()).getAccessToken())
-                                //                            .header("Connection", "close")
+                                // .header("User-Agent", "TELCOSTACK-" +
+                                // backeEndConfiguration.getOauthClientConfig().getSsoName() + " v0.1")
+                                .header("Authorization",
+                                        "Bearer " + oauthManager
+                                                .getAccessToken(
+                                                        backeEndConfiguration.getOauthClientConfig().getSsoName())
+                                                .getAccessToken())
+                                // .header("Connection", "close")
                                 .build();
 
                         logger.debug("Interceptor Called Authenticated");
@@ -192,11 +201,13 @@ public class HttpProxyManager {
                             }
                         }
 
-                        logger.debug("Target: Authenticated URL:[{}] Method:[{}]", newRequest.url().uri(), newRequest.method());
+                        logger.debug("Target: Authenticated URL:[{}] Method:[{}]", newRequest.url().uri(),
+                                newRequest.method());
                         if (logger.isDebugEnabled()) {
                             for (String header : newRequest.headers().names()) {
                                 String value = header.equalsIgnoreCase("Authorization")
-                                        ? "Bearer ***" : newRequest.header(header);
+                                        ? "Bearer ***"
+                                        : newRequest.header(header);
                                 logger.debug("Header OUT: [{}]:=[{}]", header, value);
                             }
                         }
@@ -221,10 +232,11 @@ public class HttpProxyManager {
                     OkHttpClient newClient = new OkHttpClient.Builder().addInterceptor((chain) -> {
                         Request original = chain.request();
                         Request request = original.newBuilder()
-                                //                                .header("Connection", "close")
-                                //                            .headers(original.headers())
-                                //                            .addHeader("User-Agent", "TELCOSTACK-" + backeEndConfiguration.getOauthClientConfig().getSsoName())
-                                //                            .method(original.method(), original.body())
+                                // .header("Connection", "close")
+                                // .headers(original.headers())
+                                // .addHeader("User-Agent", "TELCOSTACK-" +
+                                // backeEndConfiguration.getOauthClientConfig().getSsoName())
+                                // .method(original.method(), original.body())
                                 .build();
                         logger.debug("Interceptor Called");
                         logger.debug("Calling Backend:[{}]", name);
@@ -267,10 +279,11 @@ public class HttpProxyManager {
                 OkHttpClient newClient = new OkHttpClient.Builder().addInterceptor((chain) -> {
                     Request original = chain.request();
                     Request request = original.newBuilder()
-                            //                            .header("Connection", "close")
-                            //                            .headers(original.headers())
-                            //                            .addHeader("User-Agent", "TELCOSTACK-" + backeEndConfiguration.getOauthClientConfig().getSsoName())
-                            //                            .method(original.method(), original.body())
+                            // .header("Connection", "close")
+                            // .headers(original.headers())
+                            // .addHeader("User-Agent", "TELCOSTACK-" +
+                            // backeEndConfiguration.getOauthClientConfig().getSsoName())
+                            // .method(original.method(), original.body())
                             .build();
 
                     logger.debug("Target URL:[{}] Method:[{}]", request.url().uri(), request.method());
@@ -303,7 +316,8 @@ public class HttpProxyManager {
     public void init() {
         if (!this.running.get()) {
 
-            this.transientClients = CacheBuilder.newBuilder().maximumSize(1000).expireAfterWrite(5, TimeUnit.MINUTES).build();
+            this.transientClients = CacheBuilder.newBuilder().maximumSize(1000).expireAfterWrite(5, TimeUnit.MINUTES)
+                    .build();
 
             JsonSlurper jsonParser = new JsonSlurper();
 
@@ -322,7 +336,8 @@ public class HttpProxyManager {
                 utils.put("httpClient", this.httpClientUtils);
 
                 this.initGse();
-                this.threadPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(configuration.getRuleMappingThreads());
+                this.threadPool = (ThreadPoolExecutor) Executors
+                        .newFixedThreadPool(configuration.getRuleMappingThreads());
 
             } catch (IOException ex) {
                 logger.error("Failed to start groovy context");
@@ -368,12 +383,13 @@ public class HttpProxyManager {
             bindings.setVariable("listener", listenerName, true);
             bindings.setVariable("upstreamRequest", workLoad.getRequest(), true);
 
-//            workLoad.clientResponse()
+            // workLoad.clientResponse()
             String runningScript = configuration.getRuleMapping();
             if (handler.getEndPointContext().getRuleMapping() != null) {
                 if (!handler.getEndPointContext().getRuleMapping().trim().equals("")) {
                     runningScript = handler.getEndPointContext().getRuleMapping().trim();
-                    logger.debug("Running Script Changed for Context:[{}] Script:[{}]", handler.getContextName(), handler.getEndPointContext().getRuleMapping().trim());
+                    logger.debug("Running Script Changed for Context:[{}] Script:[{}]", handler.getContextName(),
+                            handler.getEndPointContext().getRuleMapping().trim());
                 }
             }
 
@@ -458,7 +474,7 @@ public class HttpProxyManager {
                     w.setUpstreamResponse(w.getClientResponse().getSynthResponse());
                 }
 
-//                w.getUpstreamResponse()
+                // w.getUpstreamResponse()
                 logger.debug("Synthetic Response Is Present Going to send it to Client");
 
                 try {
@@ -522,7 +538,8 @@ public class HttpProxyManager {
                     logger.debug("B3 tracing headers injected into upstream request");
                 }
 
-                logger.debug("UID[{}] Start Execute Request: [" + req.url().uri().toASCIIString() + "] Method:" + handler.method().name(), internalUid);
+                logger.debug("UID[{}] Start Execute Request: [" + req.url().uri().toASCIIString() + "] Method:"
+                        + handler.method().name(), internalUid);
                 try {
                     /**
                      * Aqui vamos executar o request do usuário no backend, o
@@ -579,7 +596,8 @@ public class HttpProxyManager {
                     }
                     Long end = System.currentTimeMillis();
                     Long took = end - start;
-                    logger.debug("UID[{}] Took [{}] ms to Execute Request: [" + req.url().uri().toASCIIString() + "] Method:" + handler.method().name(), internalUid, took);
+                    logger.debug("UID[{}] Took [{}] ms to Execute Request: [" + req.url().uri().toASCIIString()
+                            + "] Method:" + handler.method().name(), internalUid, took);
 
                     //
                     // Short Circuit
@@ -634,7 +652,8 @@ public class HttpProxyManager {
             // No Rules using default backend reference
             //
             EndPointListenersConfiguration listenerConfig = this.configuration.getListeners().get(listenerName);
-            BackendConfiguration backendConfiguration = this.configuration.getBackends().get(listenerConfig.getDefaultBackend());
+            BackendConfiguration backendConfiguration = this.configuration.getBackends()
+                    .get(listenerConfig.getDefaultBackend());
 
             //
             // Aqui vai seguir fazendo o remaping
@@ -666,7 +685,7 @@ public class HttpProxyManager {
             utils.put("gson", gson);
 
             try {
-//                    try {
+                // try {
 
                 if (workLoad != null) {
                     try {
