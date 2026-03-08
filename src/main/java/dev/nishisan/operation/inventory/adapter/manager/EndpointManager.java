@@ -24,6 +24,7 @@ import groovy.util.GroovyScriptEngine;
 import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
 import java.io.IOException;
+import java.util.concurrent.Executors;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
@@ -100,8 +101,9 @@ public class EndpointManager {
                                 endPoingConfiguration.getJettyMinThreads(),
                                 endPoingConfiguration.getJettyIdleTimeout());
                         threadPool.setName("JettyServerThreadPool");
+                        threadPool.setVirtualThreadsExecutor(Executors.newVirtualThreadPerTaskExecutor());
                         javalinConfig.jetty.threadPool = threadPool;
-                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms",
+                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms, virtualThreads=enabled",
                                 endPoingConfiguration.getJettyMinThreads(),
                                 endPoingConfiguration.getJettyMaxThreads(),
                                 endPoingConfiguration.getJettyIdleTimeout());
@@ -156,8 +158,9 @@ public class EndpointManager {
                                 endPoingConfiguration.getJettyMinThreads(),
                                 endPoingConfiguration.getJettyIdleTimeout());
                         threadPool.setName("JettyServerThreadPool");
+                        threadPool.setVirtualThreadsExecutor(Executors.newVirtualThreadPerTaskExecutor());
                         javalinConfig.jetty.threadPool = threadPool;
-                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms",
+                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms, virtualThreads=enabled",
                                 endPoingConfiguration.getJettyMinThreads(),
                                 endPoingConfiguration.getJettyMaxThreads(),
                                 endPoingConfiguration.getJettyIdleTimeout());
