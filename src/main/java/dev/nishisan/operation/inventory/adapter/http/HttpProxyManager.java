@@ -373,15 +373,15 @@ public class HttpProxyManager {
         }
         try {
 
-            bindings.getVariables().clear();
-            bindings.setVariable("context", workLoad.getContext(), true);
-            bindings.setVariable("contextName", handler.getContextName(), true);
-            bindings.setVariable("requestMethod", handler.getEndPointContext().getMethod(), true);
-            bindings.setVariable("workload", workLoad, true);
-            bindings.setVariable("utils", utils, true);
-            bindings.setVariable("include", "");
-            bindings.setVariable("listener", listenerName, true);
-            bindings.setVariable("upstreamRequest", workLoad.getRequest(), true);
+            ProtectedBinding localBindings = new ProtectedBinding();
+            localBindings.setVariable("context", workLoad.getContext(), true);
+            localBindings.setVariable("contextName", handler.getContextName(), true);
+            localBindings.setVariable("requestMethod", handler.getEndPointContext().getMethod(), true);
+            localBindings.setVariable("workload", workLoad, true);
+            localBindings.setVariable("utils", utils, true);
+            localBindings.setVariable("include", "");
+            localBindings.setVariable("listener", listenerName, true);
+            localBindings.setVariable("upstreamRequest", workLoad.getRequest(), true);
 
             // workLoad.clientResponse()
             String runningScript = configuration.getRuleMapping();
@@ -399,7 +399,7 @@ public class HttpProxyManager {
                 scriptSpan.tag("script", runningScript);
                 logger.debug("Running Script: [{}] ", runningScript);
                 try {
-                    gse.run(runningScript, bindings);
+                    gse.run(runningScript, localBindings);
                 } catch (ResourceException | ScriptException ex) {
                     //
                     // Erro de Groovy...
@@ -410,7 +410,7 @@ public class HttpProxyManager {
                     scriptSpan.finish();
                 }
                 runningScript = "";
-                runningScript = (String) bindings.getVariable("include");
+                runningScript = (String) localBindings.getVariable("include");
             }
         } finally {
             logger.debug("Done Request");
