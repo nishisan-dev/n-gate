@@ -82,3 +82,17 @@ endpoints:
     # OkHttp Dispatcher
     dispatcherMaxRequests: 512
     dispatcherMaxRequestsPerHost: 256
+
+# --- Cluster Mode (NGrid) ---
+# Descomente para habilitar cluster mode (escalabilidade horizontal)
+# cluster:
+#   enabled: true
+#   nodeId: "ngate-1"
+#   host: "0.0.0.0"
+#   port: 7100
+#   clusterName: "ngate-cluster"
+#   seeds:
+#     - "10.0.0.2:7100"
+#     - "10.0.0.3:7100"
+#   replicationFactor: 2
+#   dataDirectory: "./data/ngrid"

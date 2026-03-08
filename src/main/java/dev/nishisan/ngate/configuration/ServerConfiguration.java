@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServerConfiguration {
 
     private Map<String, EndPointConfiguration> endpoints = new ConcurrentHashMap<>();
+    private ClusterConfiguration cluster;
 
     public Map<String, EndPointConfiguration> getEndpoints() {
         return endpoints;
@@ -34,6 +35,14 @@ public class ServerConfiguration {
 
     public void setEndpoints(Map<String, EndPointConfiguration> endpoints) {
         this.endpoints = endpoints;
+    }
+
+    public ClusterConfiguration getCluster() {
+        return cluster;
+    }
+
+    public void setCluster(ClusterConfiguration cluster) {
+        this.cluster = cluster;
     }
 
 }
