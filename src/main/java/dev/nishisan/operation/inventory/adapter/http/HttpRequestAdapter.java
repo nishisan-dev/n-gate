@@ -75,7 +75,7 @@ public class HttpRequestAdapter {
                 }
             } else {
 
-                logger.info("Request BODY IS EMPTY");
+                logger.debug("Request BODY IS EMPTY");
 
             }
         } catch (IOException ex) {

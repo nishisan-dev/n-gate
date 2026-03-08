@@ -11,18 +11,7 @@
         <version>3.5.6</version>
         <relativePath/> 
     </parent>
-    <dependencyManagement>
-        <dependencies>
-            <!-- Javalin 6.x requer Jetty 11 — sobrescreve o BOM do Spring Boot 3.5.6 (que traz 12.x) -->
-            <dependency>
-                <groupId>org.eclipse.jetty</groupId>
-                <artifactId>jetty-bom</artifactId>
-                <version>11.0.24</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+    <!-- Javalin 7.x traz Jetty 12 transitivamente — não é necessário sobrescrever BOM -->
     <dependencies>
         
     
@@ -77,12 +66,7 @@
         </dependency>
 
       
-        <dependency>
-            <groupId>jakarta.servlet</groupId>
-            <artifactId>jakarta.servlet-api</artifactId>
-            <version>6.1.0</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- jakarta.servlet-api é fornecido pelo Jetty 12 ee11 transitivamente via Javalin 7 -->
 
         
         <!--        <dependency>
@@ -94,13 +78,13 @@
         <dependency>
             <groupId>io.javalin</groupId>
             <artifactId>javalin</artifactId>
-            <version>6.5.0</version>
+            <version>7.0.1</version>
         </dependency>
 
         <dependency>
             <groupId>io.javalin.community.ssl</groupId>
             <artifactId>ssl-plugin</artifactId>
-            <version>6.5.0</version>
+            <version>6.7.0</version>
         </dependency>
 
         <dependency>

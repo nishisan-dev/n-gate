@@ -22,6 +22,7 @@ import dev.nishisan.operation.inventory.adapter.auth.IAuthUserPrincipal;
 import dev.nishisan.operation.inventory.adapter.configuration.EndPointURLContext;
 import dev.nishisan.operation.inventory.adapter.observabitliy.wrappers.TracerWrapper;
 import io.javalin.config.Key;
+import io.javalin.config.MultipartConfig;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.Cookie;
@@ -32,6 +33,8 @@ import io.javalin.http.util.AsyncTaskConfig;
 import io.javalin.http.util.CookieStore;
 import io.javalin.json.JsonMapper;
 import io.javalin.plugin.ContextPlugin;
+import io.javalin.router.Endpoint;
+import io.javalin.router.Endpoints;
 import io.javalin.security.BasicAuthCredentials;
 import io.javalin.security.RouteRole;
 import io.javalin.util.function.ThrowingRunnable;
@@ -117,18 +120,23 @@ public class CustomContextWrapper implements Context {
     }
 
     @Override
-    public HandlerType handlerType() {
-        return context.handlerType();
+    public Endpoints endpoints() {
+        return context.endpoints();
     }
 
     @Override
-    public String matchedPath() {
-        return context.matchedPath();
+    public Endpoint endpoint() {
+        return context.endpoint();
     }
 
     @Override
-    public String endpointHandlerPath() {
-        return context.endpointHandlerPath();
+    public MultipartConfig multipartConfig() {
+        return context.multipartConfig();
+    }
+
+    @Override
+    public boolean strictContentTypes() {
+        return context.strictContentTypes();
     }
 
     @Override
@@ -276,10 +284,7 @@ public class CustomContextWrapper implements Context {
         return context.formParamMap();
     }
 
-    @Override
-    public boolean strictContentTypes() {
-        return context.strictContentTypes();
-    }
+
 
     @Override
     public String pathParam(String string) {

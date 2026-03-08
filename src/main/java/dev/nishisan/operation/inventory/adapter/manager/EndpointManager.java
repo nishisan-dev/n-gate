@@ -17,20 +17,16 @@
 package dev.nishisan.operation.inventory.adapter.manager;
 
 import dev.nishisan.operation.inventory.adapter.auth.OAuthClientManager;
-import dev.nishisan.operation.inventory.adapter.configuration.SSLListenerConfiguration;
 import dev.nishisan.operation.inventory.adapter.http.EndpointWrapper;
 import dev.nishisan.operation.inventory.adapter.observabitliy.service.TracerService;
 import groovy.util.GroovyScriptEngine;
 import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
 import java.io.IOException;
-import java.util.concurrent.Executors;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.eclipse.jetty.util.thread.QueuedThreadPool;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -82,35 +78,16 @@ public class EndpointManager {
             logger.debug("\t Setting UP Endpoing:[{}] With :[{}] listener(s)", endpointName, endPoingConfiguration.getListeners().size());
             endPoingConfiguration.getListeners().forEach((listenerName, listenerConfig) -> {
                 logger.debug("\t\tCreating Listener:[{}]", listenerName);
-                //
-                // Javalin Micro service, 
-                //
-                Javalin service = null;
+
+                Javalin service;
+
                 if (listenerConfig.getSsl()) {
                     logger.debug("\t\t\t SSL Enabled For:[{}]", listenerName);
                     service = Javalin.create((javalinConfig) -> {
-                        //
-                        // Disable Banner
-                        //
+                        javalinConfig.startup.showJavalinBanner = false;
+                        javalinConfig.concurrency.useVirtualThreads = true;
+                        logger.info("Javalin 7 configured with native Virtual Threads (Loom)");
 
-                        javalinConfig.showJavalinBanner = false;
-
-                        // Thread pool customizado
-                        QueuedThreadPool threadPool = new QueuedThreadPool(
-                                endPoingConfiguration.getJettyMaxThreads(),
-                                endPoingConfiguration.getJettyMinThreads(),
-                                endPoingConfiguration.getJettyIdleTimeout());
-                        threadPool.setName("JettyServerThreadPool");
-                        threadPool.setVirtualThreadsExecutor(Executors.newVirtualThreadPerTaskExecutor());
-                        javalinConfig.jetty.threadPool = threadPool;
-                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms, virtualThreads=enabled",
-                                endPoingConfiguration.getJettyMinThreads(),
-                                endPoingConfiguration.getJettyMaxThreads(),
-                                endPoingConfiguration.getJettyIdleTimeout());
-
-//                        javalinConfig.http.gzipOnlyCompression();
-
-//                        SslContextFactory.Server sslContextFactory = getFactoryFromConfig(listenerConfig.getSslConfiguration());
                         if (listenerConfig.getSslConfiguration().getKeystoreFile() != null
                                 && listenerConfig.getSslConfiguration().getKeystorePassword() != null) {
                             logger.debug("SSL Configuration From JKS");
@@ -118,10 +95,8 @@ public class EndpointManager {
                                 ssl.keystoreFromPath(listenerConfig.getSslConfiguration().getKeystoreFile(),
                                         listenerConfig.getSslConfiguration().getKeystorePassword());
                             });
-                            logger.debug("SSL Configuration Apply");
-
                             javalinConfig.registerPlugin(sslPLugin);
-                            logger.debug("SSL Configuration DONE 1 ");
+                            logger.debug("SSL Configuration DONE 1");
                         }
 
                         if (listenerConfig.getSslConfiguration().getCertFile() != null
@@ -130,60 +105,33 @@ public class EndpointManager {
                             SslPlugin sslPLugin = new SslPlugin(ssl -> {
                                 ssl.pemFromPath(listenerConfig.getSslConfiguration().getCertFile(),
                                         listenerConfig.getSslConfiguration().getKeyFile());
-
                                 ssl.securePort = listenerConfig.getListenPort();
-
                                 ssl.insecure = false;
                                 ssl.sniHostCheck = false;
-
                             });
-                            logger.debug("SSL Configuration Apply");
-
                             javalinConfig.registerPlugin(sslPLugin);
                             logger.debug("SSL Configuration DONE 2");
                         }
 
+                        // Register handlers upfront via config.routes (Javalin 7 requirement)
+                        wrapper.registerRoutes(listenerName, javalinConfig.routes, listenerConfig);
                     });
                 } else {
                     logger.debug("\t\t\t SSL Disabled For:[{}]", listenerName);
                     service = Javalin.create((javalinConfig) -> {
-                        //
-                        // Lidar com as Configurações AQUI
-                        //
-                        javalinConfig.showJavalinBanner = false;
+                        javalinConfig.startup.showJavalinBanner = false;
+                        javalinConfig.concurrency.useVirtualThreads = true;
+                        logger.info("Javalin 7 configured with native Virtual Threads (Loom)");
 
-                        // Thread pool customizado
-                        QueuedThreadPool threadPool = new QueuedThreadPool(
-                                endPoingConfiguration.getJettyMaxThreads(),
-                                endPoingConfiguration.getJettyMinThreads(),
-                                endPoingConfiguration.getJettyIdleTimeout());
-                        threadPool.setName("JettyServerThreadPool");
-                        threadPool.setVirtualThreadsExecutor(Executors.newVirtualThreadPerTaskExecutor());
-                        javalinConfig.jetty.threadPool = threadPool;
-                        logger.info("Jetty ThreadPool configured: min={}, max={}, idleTimeout={}ms, virtualThreads=enabled",
-                                endPoingConfiguration.getJettyMinThreads(),
-                                endPoingConfiguration.getJettyMaxThreads(),
-                                endPoingConfiguration.getJettyIdleTimeout());
+                        // Register handlers upfront via config.routes (Javalin 7 requirement)
+                        wrapper.registerRoutes(listenerName, javalinConfig.routes, listenerConfig);
                     });
                 }
 
-                if (service != null) {
-                    //
-                    //
-                    //
-                    logger.debug("Service is Present");
-                    wrapper.addServiceListener(listenerName, service, listenerConfig);
-                } else {
-                    logger.error("Service is null, cant start");
-                }
+                // Store listener and start AFTER Javalin.create() returns
+                wrapper.startListener(listenerName, service, listenerConfig);
             });
         });
     }
 
-    private SslContextFactory.Server getFactoryFromConfig(SSLListenerConfiguration configuration) {
-        SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
-        sslContextFactory.setKeyStorePath(configuration.getKeystoreFile());
-        sslContextFactory.setKeyStorePassword(configuration.getKeystorePassword());
-        return sslContextFactory;
-    }
 }
