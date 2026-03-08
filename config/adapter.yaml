@@ -22,6 +22,20 @@ endpoints:
             method: "ANY"
             ruleMapping: "default/Rules.groovy"
 
+      http-noauth:
+        listenAddress: "0.0.0.0"
+        listenPort: 9091
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "static-backend"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
     backends:
       keycloak:
         backendName: "keycloak"
@@ -41,6 +55,16 @@ endpoints:
             - "openid"
             - "profile"
             - "email"
+
+      keycloak-noauth:
+        backendName: "keycloak-noauth"
+        xOriginalHost: null
+        endPointUrl: "http://keycloak:8080"
+
+      static-backend:
+        backendName: "static-backend"
+        xOriginalHost: null
+        endPointUrl: "http://static-backend:8080"
 
     ruleMapping: "default/Rules.groovy"
     ruleMappingThreads: 1

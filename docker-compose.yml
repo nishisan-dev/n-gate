@@ -1,4 +1,16 @@
 services:
+  static-backend:
+    image: nginx:alpine
+    volumes:
+      - ./compose/static-backend/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.1
     command:
@@ -24,6 +36,7 @@ services:
     depends_on:
       - keycloak
       - zipkin
+      - static-backend
     environment:
       SPRING_PROFILES_DEFAULT: dev
       INVENTORY_ADAPTER_CONFIG: /workspace/config/adapter.yaml
@@ -38,6 +51,7 @@ services:
       - mvn -DskipTests package && java -Dspring.profiles.active=dev -jar target/inventory-adapter-1.0-SNAPSHOT.jar
     ports:
       - "9090:9090"
+      - "9091:9091"
       - "18080:18080"
 
 volumes:
