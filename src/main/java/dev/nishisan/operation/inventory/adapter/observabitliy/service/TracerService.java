@@ -60,9 +60,21 @@ public class TracerService implements DisposableBean {
         return DEFAULT_ZIPKIN_ENDPOINT;
     }
 
+    private boolean isTracingEnabled() {
+        String enabled = System.getenv("TRACING_ENABLED");
+        if (enabled != null && enabled.equalsIgnoreCase("false")) {
+            return false;
+        }
+        return true;
+    }
+
     private synchronized void initSender() {
         if (this.sender != null) {
             return; // double-check para evitar re-inicialização
+        }
+        if (!isTracingEnabled()) {
+            logger.info("Tracing is DISABLED (TRACING_ENABLED=false)");
+            return;
         }
         String endpoint = resolveZipkinEndpoint();
         logger.info("Initializing Zipkin sender with endpoint: [{}]", endpoint);
@@ -81,10 +93,17 @@ public class TracerService implements DisposableBean {
      * @return instância de Tracing
      */
     public Tracing getTracingInstance(String serviceName) {
-        if (this.sender == null) {
+        if (this.sender == null && isTracingEnabled()) {
             this.initSender();
         }
         return tracingInstances.computeIfAbsent(serviceName, name -> {
+            if (!isTracingEnabled()) {
+                logger.info("Creating NOOP Tracing instance for service: [{}] (tracing disabled)", name);
+                return Tracing.newBuilder()
+                        .localServiceName(name)
+                        .sampler(Sampler.NEVER_SAMPLE)
+                        .build();
+            }
             logger.info("Creating new Tracing instance for service: [{}]", name);
             return Tracing.newBuilder()
                     .localServiceName(name)
