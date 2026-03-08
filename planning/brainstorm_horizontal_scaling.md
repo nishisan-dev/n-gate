@@ -312,9 +312,9 @@ GET /actuator/health      →  Load Balancer
 
 | # | Item | Prioridade | Esforço | Status | Notas |
 |---|---|---|---|---|---|
-| 1 | Métricas + Health (nishi-utils-spring + Actuator) | 🔴 Alta | Baixo | ✅ Convergido | Pré-requisito para LB. Bridge StatsUtils→Micrometer já existe. |
-| 2 | Graceful shutdown (drain + shutdown hook) | 🔴 Alta | Médio | Pendente | Pré-requisito para rolling updates sem drop de requests. |
-| 3 | Instance ID no tracing | 🟢 Baixa | Muito Baixo | Pendente | Quick win (~10 linhas). Tag `instance-id` nas spans Brave. |
+| 1 | Métricas + Health (nishi-utils-spring + Actuator) | 🔴 Alta | Baixo | ✅ **Implementado** (Sessão 1) | Health Check via Actuator na porta `9190`. Métricas (Micrometer) pendentes para próxima sessão. |
+| 2 | Graceful shutdown (drain + shutdown hook) | 🔴 Alta | Médio | ✅ **Implementado** (Sessão 1) | `@PreDestroy` + `Javalin.stop()` com drain nativo. |
+| 3 | Instance ID no tracing | 🟢 Baixa | Muito Baixo | ✅ **Implementado** (Sessão 1) | `localServiceName` = `{service}@{instanceId}` nas spans Brave. |
 
 ### Fase 2 — Cluster Mode (habilita escala horizontal)
 
@@ -351,9 +351,32 @@ GET /actuator/health      →  Load Balancer
 |---|---|---|
 | #1 | Health Check via Spring Boot Actuator (porta `9190`) | ✅ Concluído |
 | #2 | Graceful Shutdown (`@PreDestroy` + Javalin `stop()`) | ✅ Concluído |
-| #3 | Instance ID no Tracing (tag `instance.id` nas spans) | ✅ Concluído |
+| #3 | Instance ID no Tracing (`localServiceName` = `{svc}@{id}`) | ✅ Concluído |
 
 **Decisões da sessão:**
-- Porta de management do Actuator: `9190`
+- Porta de management do Actuator: `9190` (via `MANAGEMENT_PORT` env)
 - Instance ID: `NGATE_INSTANCE_ID` env → hostname → UUID random
+- Métricas Prometheus (Micrometer/StatsUtils) ficaram para sessão dedicada
 
+**Arquivos modificados/criados:**
+
+| Arquivo | Alteração |
+|---|---|
+| `pom.xml` | Adicionado `spring-boot-starter-actuator` |
+| `application.properties` | Porta management `9190`, endpoints `health,info` |
+| `NGateHealthIndicator.java` | **[NEW]** HealthIndicator customizado (config + instanceId) |
+| `TracerService.java` | Construtor com `resolveInstanceId()`, `localServiceName` qualificado |
+| `EndpointWrapper.java` | Adicionado `stopAllListeners()` com drain Javalin 7 |
+| `EndpointManager.java` | `@PreDestroy shutdown()`, lista `activeWrappers` |
+
+**Commits:**
+
+```
+936a19f docs: add session tracking (seção 7) to horizontal scaling brainstorm
+7d4c923 feat: add instance ID to tracing spans for multi-instance distinction
+adb58f0 feat: add health check via Spring Boot Actuator
+0109645 feat: add graceful shutdown for Javalin listeners
+35aeec4 docs: update brainstorm session tracking — all Fase 1 items completed
+```
+
+**Build:** `mvn clean compile -DskipTests` ✅ (49 classes, 2.4s)
