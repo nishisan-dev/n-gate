@@ -79,12 +79,11 @@ public class EndpointManager {
             endPoingConfiguration.getListeners().forEach((listenerName, listenerConfig) -> {
                 logger.debug("\t\tCreating Listener:[{}]", listenerName);
 
-                // Javalin 7: handler registration must happen inside Javalin.create() via config.routes
-                final Javalin[] serviceRef = new Javalin[1];
+                Javalin service;
 
                 if (listenerConfig.getSsl()) {
                     logger.debug("\t\t\t SSL Enabled For:[{}]", listenerName);
-                    serviceRef[0] = Javalin.create((javalinConfig) -> {
+                    service = Javalin.create((javalinConfig) -> {
                         javalinConfig.startup.showJavalinBanner = false;
                         javalinConfig.concurrency.useVirtualThreads = true;
                         logger.info("Javalin 7 configured with native Virtual Threads (Loom)");
@@ -115,19 +114,22 @@ public class EndpointManager {
                         }
 
                         // Register handlers upfront via config.routes (Javalin 7 requirement)
-                        wrapper.addServiceListener(listenerName, serviceRef[0], javalinConfig.routes, listenerConfig);
+                        wrapper.registerRoutes(listenerName, javalinConfig.routes, listenerConfig);
                     });
                 } else {
                     logger.debug("\t\t\t SSL Disabled For:[{}]", listenerName);
-                    serviceRef[0] = Javalin.create((javalinConfig) -> {
+                    service = Javalin.create((javalinConfig) -> {
                         javalinConfig.startup.showJavalinBanner = false;
                         javalinConfig.concurrency.useVirtualThreads = true;
                         logger.info("Javalin 7 configured with native Virtual Threads (Loom)");
 
                         // Register handlers upfront via config.routes (Javalin 7 requirement)
-                        wrapper.addServiceListener(listenerName, serviceRef[0], javalinConfig.routes, listenerConfig);
+                        wrapper.registerRoutes(listenerName, javalinConfig.routes, listenerConfig);
                     });
                 }
+
+                // Store listener and start AFTER Javalin.create() returns
+                wrapper.startListener(listenerName, service, listenerConfig);
             });
         });
     }

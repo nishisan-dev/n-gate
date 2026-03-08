@@ -77,16 +77,10 @@ public class EndpointWrapper {
     }
 
     /**
-     * Faz o Binding do Contexto com os métodos Suporta get,post,put,patch,head
-     * e delete. Se precisar implementar suporte as novos métodos deve ser
-     * ajustado aqui
-     *
-     * @param name
-     * @param listener
-     * @param listenerConfig
+     * Registra rotas/handlers no RoutesConfig durante Javalin.create().
+     * Chamado DENTRO do lambda de Javalin.create() — NÃO recebe Javalin (ainda não existe).
      */
-    public void addServiceListener(String name, Javalin listener, JavalinDefaultRoutingApi routes, EndPointListenersConfiguration listenerConfig) {
-        this.listeners.put(name, listener);
+    public void registerRoutes(String name, JavalinDefaultRoutingApi routes, EndPointListenersConfiguration listenerConfig) {
         this.proxyManager.init();
         try {
             logger.debug("Getting Tracer Method");
@@ -289,19 +283,24 @@ public class EndpointWrapper {
                 }
             });
 
-            logger.debug("Trying to start Listener");
-
-            try {
-                listener.start(listenerConfig.getListenAddress(), listenerConfig.getListenPort());
-                logger.debug("Listener:[" + name + "] Started at: " + listenerConfig.getListenAddress() + "/" + listenerConfig.getListenPort());
-
-            } catch (Exception ex) {
-                logger.error("Failed Listener:[" + name + "] Started at: " + listenerConfig.getListenAddress() + "/" + listenerConfig.getListenPort(), ex);
-            }
         } catch (Exception ex) {
-            logger.error("Generic EX At AddService Method", ex);
+            logger.error("Generic EX At RegisterRoutes Method", ex);
         }
+    }
 
+    /**
+     * Registra o listener Javalin e inicia-o.
+     * Chamado APÓS Javalin.create() retornar.
+     */
+    public void startListener(String name, Javalin listener, EndPointListenersConfiguration listenerConfig) {
+        this.listeners.put(name, listener);
+        logger.debug("Trying to start Listener");
+        try {
+            listener.start(listenerConfig.getListenAddress(), listenerConfig.getListenPort());
+            logger.debug("Listener:[" + name + "] Started at: " + listenerConfig.getListenAddress() + "/" + listenerConfig.getListenPort());
+        } catch (Exception ex) {
+            logger.error("Failed Listener:[" + name + "] Started at: " + listenerConfig.getListenAddress() + "/" + listenerConfig.getListenPort(), ex);
+        }
     }
 
     public Map<String, Javalin> getListeners() {
