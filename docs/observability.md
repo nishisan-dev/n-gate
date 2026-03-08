@@ -1,6 +1,6 @@
 # Observabilidade — Zipkin / Brave
 
-Documentação da camada de distributed tracing do Inventory Adapter.
+Documentação da camada de distributed tracing do n-gate.
 
 ## Stack
 
@@ -23,7 +23,7 @@ Cliente
   │
   ▼
 ┌─────────────────────────────────────────────────┐
-│ Inventory Adapter                               │
+│ n-gate                                          │
 │                                                 │
 │  rootSpan (SERVER) ← extracted from B3 headers  │
 │  ├── request-handler                            │

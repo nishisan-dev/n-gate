@@ -16,7 +16,7 @@ skinparam note {
     BorderColor #FFC107
 }
 
-title Inventory Adapter — Javalin 7 + Jetty 12 + Loom Architecture
+title n-gate — Javalin 7 + Jetty 12 + Loom Architecture
 
 package "Docker Compose" {
 

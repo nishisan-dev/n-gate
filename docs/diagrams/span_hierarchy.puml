@@ -1,5 +1,5 @@
 @startuml
-title Inventory Adapter — Span Hierarchy (Zipkin/Brave)
+title n-gate — Span Hierarchy (Zipkin/Brave)
 
 skinparam backgroundColor #FAFAFA
 skinparam defaultFontName Inter
