@@ -28,7 +28,10 @@ def binaryDataProcessor = {workload->
     
 
 }
-workload.addResponseProcessor('binaryDataProcessor',binaryDataProcessor)
+/**
+ * Response processors são custosos, use com sabedoria
+ */
+//workload.addResponseProcessor('binaryDataProcessor',binaryDataProcessor)
 
 //workload.returnPipe = true;
 //def m = [:];
