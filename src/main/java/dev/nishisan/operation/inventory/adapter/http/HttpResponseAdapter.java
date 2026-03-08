@@ -60,44 +60,46 @@ public class HttpResponseAdapter {
             }
 
             //
-            // --- Fase 2: Response Processors (Groovy closures) ---
-            //
-            if (!w.getResponseProcessors().isEmpty()) {
-                w.getResponseProcessors().forEach((p, c) -> {
-                    SpanWrapper processorSpan = tracer.createChildSpan("response-processor", responseSpan);
-                    processorSpan.tag("processor-name", p);
-                    try {
-                        logger.debug("Running Processor:[{}]", p);
-                        if (c.getMaximumNumberOfParameters() == 1) {
-                            c.call(w);
-                        } else {
-                            logger.warn("Invalid Processor Discarted:[{}]", p);
-                        }
-                    } finally {
-                        processorSpan.finish();
-                    }
-                });
-            }
-
-            //
-            // --- Fase 3: Decisão de pipe ---
+            // --- Fase 2 + 3: Response Processors + Decisão de pipe ---
             //
             boolean returnPipe = false;
-            logger.debug("getReturnPipe():[{}]", w.getReturnPipe());
-            if (w.getReturnPipe() && !synth) {
-                if (w.getClientResponse().getSynthResponse() == null) {
-                    if (!w.getUpstreamResponse().getWasRead()) {
-                        returnPipe = true;
-                    } else {
-                        logger.info("Content Was Touched, cant return pipe anymore..");
-                    }
-                } else {
-                    logger.debug("Synth Response is present");
+            SpanWrapper decisionSpan = tracer.createChildSpan("response-pipe-decision", responseSpan);
+            try {
+                if (!w.getResponseProcessors().isEmpty()) {
+                    w.getResponseProcessors().forEach((p, c) -> {
+                        SpanWrapper processorSpan = tracer.createChildSpan("response-processor", decisionSpan);
+                        processorSpan.tag("processor-name", p);
+                        try {
+                            logger.debug("Running Processor:[{}]", p);
+                            if (c.getMaximumNumberOfParameters() == 1) {
+                                c.call(w);
+                            } else {
+                                logger.warn("Invalid Processor Discarted:[{}]", p);
+                            }
+                        } finally {
+                            processorSpan.finish();
+                        }
+                    });
                 }
-            } else {
 
+                logger.debug("getReturnPipe():[{}]", w.getReturnPipe());
+                if (w.getReturnPipe() && !synth) {
+                    if (w.getClientResponse().getSynthResponse() == null) {
+                        if (!w.getUpstreamResponse().getWasRead()) {
+                            returnPipe = true;
+                        } else {
+                            logger.info("Content Was Touched, cant return pipe anymore..");
+                        }
+                    } else {
+                        logger.debug("Synth Response is present");
+                    }
+                }
+                logger.debug("Return Pipe is :[{}]", returnPipe);
+            } finally {
+                decisionSpan.tag("return-pipe", "" + returnPipe);
+                decisionSpan.tag("has-processors", "" + !w.getResponseProcessors().isEmpty());
+                decisionSpan.finish();
             }
-            logger.debug("Return Pipe is :[{}]", returnPipe);
 
             responseSpan.tag("return-pipe", "" + returnPipe);
             if (returnPipe) {
@@ -110,9 +112,9 @@ public class HttpResponseAdapter {
                     headersSpan.tag("status-code", "" + w.getUpstreamResponse().getStatus());
                     w.getUpstreamResponse().getHeaderNames().forEach(header -> {
                         w.getClientResponse().addHeader(header, w.getUpstreamResponse().getHeader(header));
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Upstream Response Headers: [{}]:={}", header, w.getUpstreamResponse().getHeader(header));
-                        }
+//                        if (logger.isDebugEnabled()) {
+//                            logger.debug("Upstream Response Headers: [{}]:={}", header, w.getUpstreamResponse().getHeader(header));
+//                        }
                     });
                     headersSpan.tag("upstream-headers-count", "" + w.getUpstreamResponse().getHeaderNames().size());
                 } finally {
@@ -122,10 +124,10 @@ public class HttpResponseAdapter {
                 //
                 // --- Fase 5: Pipe de streaming ---
                 //
-                logger.debug("Returning Pipe to the Client....");
                 SpanWrapper clientSpan = tracer.createChildSpan("response-send-to-client", responseSpan);
 
                 try (InputStream inputStream = w.getUpstreamResponse().getOkHttpResponse().body().byteStream(); OutputStream outputStream = w.getClientResponse().getOutputStream()) {
+                    logger.debug("Returning Pipe to the Client....");
 
                     byte[] buffer = new byte[8192];
                     int bytesRead;
