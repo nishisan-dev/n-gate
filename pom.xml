@@ -282,6 +282,13 @@
             <artifactId>guava</artifactId>
             <version>33.3.1-jre</version>
         </dependency>
+
+        <!-- NGrid: distributed structures (DistributedMap, leader election, mesh) -->
+        <dependency>
+            <groupId>dev.nishisan</groupId>
+            <artifactId>nishi-utils</artifactId>
+            <version>3.1.0</version>
+        </dependency>
     </dependencies>
     <!-- 
      Parte que Cuida de Criar o Jar, com o main class e o manifest e criar a pasta lib
