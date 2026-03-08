@@ -5,6 +5,7 @@ Este projeto está preparado para rodar localmente com um único `docker compose
 - `inventory-adapter`
 - `keycloak` (SSO)
 - `zipkin` (tracing)
+- `static-backend` (nginx estático para benchmark)
 
 ## Pré-requisitos
 
@@ -29,12 +30,16 @@ Para parar e remover containers:
 docker compose down
 ```
 
-## Portas dos microserviços
+## Portas dos serviços
 
-- `inventory-adapter`: `9090`
-- `inventory-adapter` (Spring/diagnóstico): `18080`
-- `keycloak`: `8081` (mapeado para `8080` interno)
-- `zipkin`: `9411`
+| Serviço | Porta Host | Porta Container | Descrição |
+|---------|:----------:|:---------------:|-----------|
+| `inventory-adapter` | `9090` | `9090` | Proxy principal (com auth OAuth ao upstream) |
+| `inventory-adapter` | `9091` | `9091` | Proxy benchmark (sem auth, upstream estático) |
+| `inventory-adapter` | `18080` | `18080` | Spring Boot / diagnóstico |
+| `keycloak` | `8081` | `8080` | SSO / Identity Provider |
+| `zipkin` | `9411` | `9411` | Distributed Tracing UI |
+| `static-backend` | `3080` | `8080` | Nginx com JSON fixo (benchmark only) |
 
 ## Fluxo de teste (fim a fim)
 
@@ -92,14 +97,26 @@ curl -i 'http://localhost:9090/realms/inventory-dev/protocol/openid-connect/user
   -H "Authorization: Bearer ${TOKEN}"
 ```
 
-### 5. Ver traces no Zipkin
+### 5. Validar backend estático (benchmark)
+
+O backend estático responde JSON fixo em qualquer path, ideal para medir o overhead puro do adapter.
+
+```bash
+curl -i http://localhost:9091/qualquer/path
+```
+
+Resultado esperado: `200` com JSON contendo `"source":"static-backend"`.
+
+### 6. Ver traces no Zipkin
 
 - Acesse: `http://localhost:9411`
 - Procure pelo serviço `http` (nome do listener do adapter).
+- Compare traces da porta `9090` (com auth) vs `9091` (sem auth, upstream estático) para isolar o overhead do adapter.
 
 ## Arquivos principais do ambiente local
 
 - `docker-compose.yml`
 - `compose/keycloak/realm-inventory-dev.json`
+- `compose/static-backend/default.conf`
 - `config/adapter.yaml`
 
