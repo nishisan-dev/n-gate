@@ -307,6 +307,22 @@ public class EndpointWrapper {
         return listeners;
     }
 
+    /**
+     * Para gracefully todos os listeners Javalin deste endpoint.
+     * Javalin 7 já implementa drain nativo em {@code stop()}.
+     */
+    public void stopAllListeners() {
+        listeners.forEach((name, javalin) -> {
+            try {
+                logger.info("Stopping listener: [{}]", name);
+                javalin.stop();
+                logger.info("Listener [{}] stopped successfully", name);
+            } catch (Exception e) {
+                logger.warn("Failed to stop listener [{}]: {}", name, e.getMessage(), e);
+            }
+        });
+    }
+
     public void setListeners(Map<String, Javalin> listeners) {
         this.listeners = listeners;
     }

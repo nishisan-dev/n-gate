@@ -23,11 +23,14 @@ import groovy.util.GroovyScriptEngine;
 import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -43,6 +46,7 @@ public class EndpointManager {
 
     private final Logger logger = LogManager.getLogger(EndpointManager.class);
     private final Map<String, EndpointWrapper> endpoints = new ConcurrentHashMap<>();
+    private final List<EndpointWrapper> activeWrappers = new ArrayList<>();
     private GroovyScriptEngine customGse;
     @Autowired
     private ConfigurationManager configurationManager;
@@ -62,6 +66,19 @@ public class EndpointManager {
         }
     }
 
+    /**
+     * Graceful shutdown: para todos os listeners Javalin e drena requests em andamento.
+     * Invocado automaticamente pelo Spring Boot ao receber SIGTERM/shutdown.
+     */
+    @PreDestroy
+    private void shutdown() {
+        logger.info("n-gate graceful shutdown initiated — stopping {} endpoint wrapper(s)...", activeWrappers.size());
+        for (EndpointWrapper wrapper : activeWrappers) {
+            wrapper.stopAllListeners();
+        }
+        logger.info("All Javalin listeners stopped. Shutdown complete.");
+    }
+
     private void initGse() throws IOException {
         customGse = new GroovyScriptEngine("custom");
     }
@@ -74,6 +91,7 @@ public class EndpointManager {
         logger.debug("Total endpoints size:[{}]", this.configurationManager.loadConfiguration().getEndpoints().size());
         this.configurationManager.loadConfiguration().getEndpoints().forEach((endpointName, endPoingConfiguration) -> {
             EndpointWrapper wrapper = new EndpointWrapper(oAUthClient, endPoingConfiguration, customGse, tracerService);
+            activeWrappers.add(wrapper);
 
             logger.debug("\t Setting UP Endpoing:[{}] With :[{}] listener(s)", endpointName, endPoingConfiguration.getListeners().size());
             endPoingConfiguration.getListeners().forEach((listenerName, listenerConfig) -> {
