@@ -349,9 +349,9 @@ GET /actuator/health      →  Load Balancer
 
 | Item | Descrição | Status |
 |---|---|---|
-| #1 | Health Check via Spring Boot Actuator (porta `9190`) | 🔲 Pendente |
-| #2 | Graceful Shutdown (`@PreDestroy` + Javalin `stop()`) | 🔲 Pendente |
-| #3 | Instance ID no Tracing (tag `instance.id` nas spans) | 🔲 Pendente |
+| #1 | Health Check via Spring Boot Actuator (porta `9190`) | ✅ Concluído |
+| #2 | Graceful Shutdown (`@PreDestroy` + Javalin `stop()`) | ✅ Concluído |
+| #3 | Instance ID no Tracing (tag `instance.id` nas spans) | ✅ Concluído |
 
 **Decisões da sessão:**
 - Porta de management do Actuator: `9190`
