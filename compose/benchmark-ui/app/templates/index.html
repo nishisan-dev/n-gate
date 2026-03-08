@@ -88,7 +88,13 @@
                 <div id="dataState" class="hidden h-full overflow-y-auto pr-2 pb-4">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-bold text-white">Resultados da Execução</h2>
-                        <span id="timestampBadge" class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-700"></span>
+                        <div class="flex items-center gap-3">
+                            <span id="timestampBadge" class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-700"></span>
+                            <button id="exportBtn" onclick="exportToCSV()" class="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/30 hover:border-emerald-500/60 transition-all flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                Exportar CSV
+                            </button>
+                        </div>
                     </div>
 
                     <div id="dynamicCards" class="space-y-6">
@@ -101,6 +107,7 @@
 
     <script>
         let eventSource = null;
+        let lastResultData = null;
 
         function setUIState(state) {
             document.getElementById('emptyState').classList.add('hidden');
@@ -264,7 +271,40 @@
             };
         }
 
+        function exportToCSV() {
+            if (!lastResultData) return;
+            const data = lastResultData;
+            const results = data.results;
+            const concurrencies = data.config.concurrency_levels;
+            const allEndpoints = ['baseline', 'nginx_proxy', 'javalin_proxy'];
+            const metrics = ['rps', 'time_per_request', 'p50', 'p90', 'p95', 'p99', 'p100', 'failed_requests', 'complete_requests', 'transfer_rate'];
+
+            let csv = 'Concurrency,Endpoint,' + metrics.join(',') + '\n';
+
+            concurrencies.forEach(c => {
+                allEndpoints.forEach(ep => {
+                    const key = `${ep}_c${c}`;
+                    const m = results[key];
+                    if (m) {
+                        const row = [c, ep];
+                        metrics.forEach(k => row.push(m[k] != null ? m[k] : ''));
+                        csv += row.join(',') + '\n';
+                    }
+                });
+            });
+
+            const ts = data.timestamp.replace(/[\s:]/g, '_');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `benchmark_${data.mode}_${ts}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
         function renderResults(data) {
+            lastResultData = data;
             document.getElementById('timestampBadge').innerText = data.timestamp;
             const container = document.getElementById('dynamicCards');
             container.innerHTML = '';
