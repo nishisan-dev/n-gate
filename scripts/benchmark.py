@@ -18,16 +18,27 @@ from datetime import datetime
 BASELINE_URL = "http://localhost:3080/"
 PROXY_URL = "http://localhost:9091/"
 
-TOTAL_REQUESTS = 1000
-CONCURRENCY_LEVELS = [1, 10, 50]
+TOTAL_REQUESTS = 5000
+CONCURRENCY_LEVELS = [1, 10, 50, 100, 500]
 WARMUP_REQUESTS = 50
+TIMED_DURATION = 10  # segundos por nível de concorrência
 
 # ─── Parser do output do ab ──────────────────────────────────────────────────
 
 def run_ab(url, requests, concurrency):
-    """Executa ab e retorna o output como string."""
+    """Executa ab por contagem de requests."""
     cmd = ["ab", "-n", str(requests), "-c", str(concurrency), "-q", url]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        print(f"  ⚠ ab falhou: {result.stderr.strip()}")
+        return None
+    return result.stdout
+
+
+def run_ab_timed(url, duration, concurrency):
+    """Executa ab por tempo (segundos). Usa -n alto como safety net."""
+    cmd = ["ab", "-t", str(duration), "-n", "999999", "-c", str(concurrency), "-q", url]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=duration + 30)
     if result.returncode != 0:
         print(f"  ⚠ ab falhou: {result.stderr.strip()}")
         return None
@@ -74,7 +85,7 @@ def format_bar(value, max_value, width=30):
     return "█" * filled + "░" * (width - filled)
 
 
-def print_report(results):
+def print_report(results, mode="requests"):
     """Imprime o relatório comparativo formatado."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -86,7 +97,11 @@ def print_report(results):
     print()
     print(f"  Baseline : {BASELINE_URL} (nginx direto)")
     print(f"  Proxy    : {PROXY_URL} (adapter → nginx)")
-    print(f"  Requests : {TOTAL_REQUESTS} por cenário")
+    print(f"  Mode     : {mode}")
+    if mode == 'requests':
+        print(f"  Requests : {TOTAL_REQUESTS} por cenário")
+    else:
+        print(f"  Duração  : {TIMED_DURATION}s por cenário")
     print()
 
     for concurrency in CONCURRENCY_LEVELS:
@@ -169,10 +184,12 @@ def print_report(results):
     # Salvar JSON
     json_data = {
         "timestamp": now,
+        "mode": mode,
         "config": {
             "baseline_url": BASELINE_URL,
             "proxy_url": PROXY_URL,
-            "total_requests": TOTAL_REQUESTS,
+            "total_requests": TOTAL_REQUESTS if mode == "requests" else None,
+            "timed_duration": TIMED_DURATION if mode == "timed" else None,
             "concurrency_levels": CONCURRENCY_LEVELS,
         },
         "results": {}
@@ -181,7 +198,8 @@ def print_report(results):
         key = f"{target}_c{concurrency}"
         json_data["results"][key] = metrics
 
-    json_path = "scripts/benchmark_results.json"
+    suffix = "_timed" if mode == "timed" else ""
+    json_path = f"scripts/benchmark_results{suffix}.json"
     with open(json_path, "w") as f:
         json.dump(json_data, f, indent=2)
     print(f"\n  Resultados salvos em: {json_path}")
@@ -222,7 +240,11 @@ def main():
     run_ab(PROXY_URL, WARMUP_REQUESTS, 1)
     print("  ✅ Warmup concluído")
 
-    # Benchmark
+    # ── Fase 1: Benchmark por contagem de requests ────────────────────────
+    print(f"\n{'='*78}")
+    print(f"  FASE 1: BENCHMARK POR REQUESTS ({TOTAL_REQUESTS} requests)")
+    print(f"{'='*78}")
+
     for concurrency in CONCURRENCY_LEVELS:
         print(f"\n📊 Benchmark com concorrência={concurrency}, requests={TOTAL_REQUESTS}")
 
@@ -240,8 +262,35 @@ def main():
             results[("proxy", concurrency)] = metrics
             print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg")
 
-    # Relatório
-    print_report(results)
+    print_report(results, mode="requests")
+
+    # ── Fase 2: Benchmark por tempo ──────────────────────────────────────
+    print(f"\n{'='*78}")
+    print(f"  FASE 2: BENCHMARK POR TEMPO ({TIMED_DURATION}s por cenário)")
+    print(f"{'='*78}")
+
+    timed_results = {}
+
+    for concurrency in CONCURRENCY_LEVELS:
+        print(f"\n⏱  Benchmark com concorrência={concurrency}, duração={TIMED_DURATION}s")
+
+        print(f"  → Baseline (nginx direto)...")
+        output = run_ab_timed(BASELINE_URL, TIMED_DURATION, concurrency)
+        metrics = parse_ab_output(output)
+        if metrics:
+            timed_results[("baseline", concurrency)] = metrics
+            total = int(metrics.get('complete_requests', 0))
+            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg, {total} total reqs")
+
+        print(f"  → Proxy (adapter)...")
+        output = run_ab_timed(PROXY_URL, TIMED_DURATION, concurrency)
+        metrics = parse_ab_output(output)
+        if metrics:
+            timed_results[("proxy", concurrency)] = metrics
+            total = int(metrics.get('complete_requests', 0))
+            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg, {total} total reqs")
+
+    print_report(timed_results, mode="timed")
 
 
 if __name__ == "__main__":
