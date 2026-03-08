@@ -1,0 +1,84 @@
+@startuml javalin7_architecture
+
+!define RECTANGLE class
+
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Inter
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam rectangle {
+    BackgroundColor #E8F5E9
+    BorderColor #4CAF50
+    FontSize 12
+}
+skinparam note {
+    BackgroundColor #FFF8E1
+    BorderColor #FFC107
+}
+
+title Inventory Adapter — Javalin 7 + Jetty 12 + Loom Architecture
+
+package "Docker Compose" {
+
+    rectangle "**Nginx Baseline**\n(static-backend:8080)" as nginx #E3F2FD
+
+    rectangle "**Keycloak**\n(keycloak:8080)" as kc #F3E5F5
+
+    rectangle "**Zipkin**\n(zipkin:9411)" as zipkin #FFF3E0
+
+    package "inventory-adapter" as adapter {
+
+        rectangle "**Spring Boot 3.5**\nApplicationReadyEvent" as spring #E8EAF6
+
+        rectangle "**EndpointManager**\nonStartup()" as em #E8F5E9
+
+        package "Javalin 7.0.1 + Jetty 12" as javalin {
+            rectangle "**Javalin.create(config)**\nconfig.concurrency.useVirtualThreads = true\nconfig.routes → registerRoutes()" as create #C8E6C9
+
+            rectangle "**VirtualThreadPool**\n(Loom nativo - JDK 21)" as vtp #A5D6A7
+
+            rectangle "**Listener HTTP**\n:9090 / :9091" as listener #C8E6C9
+        }
+
+        rectangle "**EndpointWrapper**\nregisterRoutes() → config.routes\nstartListener() → Javalin.start()" as ew #E8F5E9
+
+        rectangle "**HttpProxyManager**\nhandleRequest()" as proxy #E8F5E9
+
+        rectangle "**TracerService**\nBrave + Zipkin" as tracer #FFF3E0
+
+        rectangle "**OAuthClientManager**\nKeycloak integration" as oauth #F3E5F5
+    }
+}
+
+rectangle "**HTTP Clients**" as clients #ECEFF1
+
+clients -down-> listener : HTTP Request
+spring -down-> em : triggers
+em -down-> create : Javalin.create()
+create -right-> vtp : manages threads
+create -down-> ew : registerRoutes()
+ew -down-> listener : startListener()
+listener -down-> proxy : handleRequest()
+proxy -right-> nginx : reverse proxy
+proxy -left-> tracer : spans
+tracer -down-> zipkin : B3 propagation
+oauth -down-> kc : token validation
+
+note right of vtp
+  **Antes (Javalin 6):**
+  QueuedThreadPool +
+  Executors.newVirtualThreadPerTaskExecutor()
+  --
+  **Depois (Javalin 7):**
+  config.concurrency.useVirtualThreads = true
+  (Jetty 12 VirtualThreadPool nativo)
+end note
+
+note bottom of ew
+  **Javalin 7 Breaking Change:**
+  Handlers registrados upfront
+  via config.routes (não mais
+  em Javalin instance pós-create)
+end note
+
+@enduml
