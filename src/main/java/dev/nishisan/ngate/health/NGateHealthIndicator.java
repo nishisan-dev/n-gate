@@ -16,6 +16,7 @@
  */
 package dev.nishisan.ngate.health;
 
+import dev.nishisan.ngate.cluster.ClusterService;
 import dev.nishisan.ngate.manager.ConfigurationManager;
 import dev.nishisan.ngate.observabitliy.service.TracerService;
 import org.apache.logging.log4j.LogManager;
@@ -29,7 +30,7 @@ import org.springframework.stereotype.Component;
  * Health indicator customizado para o n-gate.
  * <p>
  * Verifica se a configuração foi carregada com sucesso e reporta
- * informações operacionais (instanceId, endpoints configurados).
+ * informações operacionais (instanceId, endpoints configurados, cluster status).
  * <p>
  * Acessível via {@code GET /actuator/health}.
  *
@@ -47,6 +48,9 @@ public class NGateHealthIndicator implements HealthIndicator {
     @Autowired
     private TracerService tracerService;
 
+    @Autowired
+    private ClusterService clusterService;
+
     @Override
     public Health health() {
         try {
@@ -58,10 +62,21 @@ public class NGateHealthIndicator implements HealthIndicator {
                         .build();
             }
 
-            return Health.up()
+            Health.Builder builder = Health.up()
                     .withDetail("instanceId", tracerService.getInstanceId())
-                    .withDetail("endpointsConfigured", config.getEndpoints().size())
-                    .build();
+                    .withDetail("endpointsConfigured", config.getEndpoints().size());
+
+            // Cluster info
+            if (clusterService.isClusterMode()) {
+                builder.withDetail("clusterMode", true)
+                       .withDetail("clusterNodeId", clusterService.getLocalNodeId())
+                       .withDetail("isLeader", clusterService.isLeader())
+                       .withDetail("activeMembers", clusterService.getActiveMembersCount());
+            } else {
+                builder.withDetail("clusterMode", false);
+            }
+
+            return builder.build();
         } catch (Exception e) {
             logger.error("Health check failed", e);
             return Health.down()
