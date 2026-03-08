@@ -24,6 +24,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.net.InetAddress;
+import java.util.UUID;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Service;
 import zipkin2.reporter.brave.AsyncZipkinSpanHandler;
@@ -34,6 +36,10 @@ import zipkin2.reporter.okhttp3.OkHttpSender;
  * <p>
  * Cacheia instâncias por serviceName e garante shutdown graceful via
  * {@link DisposableBean}.
+ * <p>
+ * Cada instância do n-gate recebe um {@code instanceId} único que é composto
+ * no {@code localServiceName} das spans como {@code {service}@{instanceId}},
+ * permitindo distinguir instâncias individuais no Zipkin/Grafana.
  *
  * @author Lucas Nishimura <lucas.nishimura at gmail.com>
  * created 05.09.2024
@@ -44,9 +50,35 @@ public class TracerService implements DisposableBean {
     private static final Logger logger = LogManager.getLogger(TracerService.class);
     private static final String DEFAULT_ZIPKIN_ENDPOINT = "http://zipkin:9411/api/v2/spans";
 
+    private final String instanceId;
     private OkHttpSender sender;
     private AsyncZipkinSpanHandler spanHandler;
     private final Map<String, Tracing> tracingInstances = new ConcurrentHashMap<>();
+
+    public TracerService() {
+        this.instanceId = resolveInstanceId();
+        logger.info("n-gate instance ID: [{}]", this.instanceId);
+    }
+
+    /**
+     * Resolve o Instance ID único desta instância do n-gate.
+     * Ordem de precedência: env NGATE_INSTANCE_ID → hostname → UUID.
+     */
+    private static String resolveInstanceId() {
+        String envId = System.getenv("NGATE_INSTANCE_ID");
+        if (envId != null && !envId.isBlank()) {
+            return envId.trim();
+        }
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            return UUID.randomUUID().toString().substring(0, 8);
+        }
+    }
+
+    public String getInstanceId() {
+        return instanceId;
+    }
 
     private String resolveZipkinEndpoint() {
         String envEndpoint = System.getenv("ZIPKIN_ENDPOINT");
@@ -97,16 +129,17 @@ public class TracerService implements DisposableBean {
             this.initSender();
         }
         return tracingInstances.computeIfAbsent(serviceName, name -> {
+            String qualifiedName = name + "@" + instanceId;
             if (!isTracingEnabled()) {
-                logger.info("Creating NOOP Tracing instance for service: [{}] (tracing disabled)", name);
+                logger.info("Creating NOOP Tracing instance for service: [{}] (tracing disabled)", qualifiedName);
                 return Tracing.newBuilder()
-                        .localServiceName(name)
+                        .localServiceName(qualifiedName)
                         .sampler(Sampler.NEVER_SAMPLE)
                         .build();
             }
-            logger.info("Creating new Tracing instance for service: [{}]", name);
+            logger.info("Creating new Tracing instance for service: [{}]", qualifiedName);
             return Tracing.newBuilder()
-                    .localServiceName(name)
+                    .localServiceName(qualifiedName)
                     .addSpanHandler(spanHandler)
                     .sampler(Sampler.ALWAYS_SAMPLE)
                     .build();
