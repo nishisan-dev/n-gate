@@ -12,4 +12,4 @@ services:
     command:
       - /bin/bash
       - -lc
-      - mvn -DskipTests package && java -Dspring.profiles.active=bench -jar target/n-gate-1.0-SNAPSHOT.jar
+      - mvn -s /tmp/maven-settings.xml -DskipTests package && java -Dspring.profiles.active=bench -jar target/n-gate-1.0-SNAPSHOT.jar
