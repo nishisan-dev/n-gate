@@ -10,14 +10,15 @@ Calcula o overhead do adapter por comparação.
 import subprocess
 import re
 import sys
+import os
 import json
 from datetime import datetime
 
 # ─── Configuração ────────────────────────────────────────────────────────────
 
-BASELINE_URL = "http://localhost:3080/"
-NGINX_PROXY_URL = "http://localhost:4080/"
-JAVALIN_PROXY_URL = "http://localhost:9091/"
+BASELINE_URL = os.environ.get("BASELINE_URL", "http://localhost:3080/")
+NGINX_PROXY_URL = os.environ.get("NGINX_PROXY_URL", "http://localhost:4080/")
+JAVALIN_PROXY_URL = os.environ.get("JAVALIN_PROXY_URL", "http://localhost:9091/")
 
 ENDPOINTS = [
     ("baseline", "Baseline (nginx direto)", BASELINE_URL),

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Benchmark Adapter UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">
+                Inventory Adapter Benchmark
+            </h1>
+            <p class="text-slate-400">Ambiente de Teste Isolado In-Cluster (Zero Host NAT Overhead)</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass-panel p-6 rounded-xl col-span-1 md:col-span-3 lg:col-span-1 flex flex-col justify-center">
+                <h2 class="text-xl font-semibold mb-4 text-emerald-400">Controles</h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Modo de Avaliação</label>
+                    <select id="mode" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-slate-200 outline-none focus:border-emerald-500 transition-colors">
+                        <option value="requests">Fase 1: Requests Fixas</option>
+                        <option value="timed">Fase 2: Timed Test (10s)</option>
+                    </select>
+                </div>
+
+                <div class="mt-auto pt-4">
+                    <button id="runBtn" onclick="runBenchmark()" class="w-full relative group overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-semibold py-3 px-4 rounded-lg shadow-lg hover:shadow-emerald-500/30 transition-all duration-300 transform hover:-translate-y-0.5">
+                        <span id="btnText" class="relative z-10 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            INICIAR BENCHMARK
+                        </span>
+                        <div class="absolute inset-0 h-full w-full scale-0 rounded-lg transition-all duration-300 group-hover:scale-100 group-hover:bg-white/20"></div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass-panel p-6 rounded-xl col-span-1 md:col-span-2 relative overflow-hidden h-full min-h-[300px]" id="resultContainer">
+                <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500">
+                    <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <p>Aguardando execução para extrair as métricas...</p>
+                </div>
+
+                <div id="loadingState" class="absolute inset-0 flex flex-col items-center justify-center text-emerald-400 hidden bg-slate-900/50 backdrop-blur-sm z-10 transition-all">
+                    <svg class="w-12 h-12 mb-4 spinner" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="font-medium animate-pulse">Inundando endpoints na rede interna Docker...</p>
+                </div>
+
+                <div id="dataState" class="hidden h-full overflow-y-auto pr-2 pb-4">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white">Resultados da Execução</h2>
+                        <span id="timestampBadge" class="text-xs bg-slate-800 text-slate-400 px-3 py-1 rounded-full border border-slate-700"></span>
+                    </div>
+
+                    <div id="dynamicCards" class="space-y-6">
+                        <!-- Cards renderizados via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function runBenchmark() {
+            const btn = document.getElementById('runBtn');
+            const mode = document.getElementById('mode').value;
+            
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('dataState').classList.add('hidden');
+            document.getElementById('loadingState').classList.remove('hidden');
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode, requests: 5000, timed_duration: 10, concurrencies: "1, 10, 50, 100, 500" })
+                });
+
+                const data = await response.json();
+                
+                if(!response.ok) {
+                    alert("Erro interno: " + data.error);
+                    throw new Error("API falhou");
+                }
+
+                renderResults(data);
+                
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('dataState').classList.remove('hidden');
+                
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('emptyState').classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function renderResults(data) {
+            document.getElementById('timestampBadge').innerText = data.timestamp;
+            const container = document.getElementById('dynamicCards');
+            container.innerHTML = ''; // limpar velhos
+
+            const results = data.results;
+            const concurrencies = data.config.concurrency_levels;
+            const endpoints = [
+                {id: 'nginx_proxy', name: 'Nginx Proxy'},
+                {id: 'javalin_proxy', name: 'Javalin Proxy'}
+            ];
+
+            concurrencies.forEach(c => {
+                let html = `<div class="bg-slate-800/50 rounded-lg p-5 border border-slate-700/50">
+                    <h3 class="text-slate-200 font-bold border-b border-slate-700 pb-2 mb-4">Concurrency Level: <span class="text-emerald-400">${c}</span></h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+
+                const baselineKey = `baseline_c${c}`;
+                const baselineData = results[baselineKey];
+
+                if (!baselineData) {
+                    html += `<p class="text-red-400 text-sm col-span-2">Falha global para o baseline.</p></div></div>`;
+                    container.innerHTML += html;
+                    return;
+                }
+
+                endpoints.forEach(ep => {
+                    const proxyKey = `${ep.id}_c${c}`;
+                    const proxyData = results[proxyKey];
+                    
+                    if(proxyData) {
+                        const overhead = (proxyData.time_per_request - baselineData.time_per_request).toFixed(2);
+                        const rpsDiff = (((proxyData.rps - baselineData.rps) / baselineData.rps) * 100).toFixed(1);
+                        const colorClass = ep.id === 'nginx_proxy' ? 'text-blue-400' : 'text-purple-400';
+                        
+                        html += `
+                        <div class="bg-slate-900/80 rounded p-4 border border-slate-700">
+                            <div class="flex justify-between mb-2">
+                                <span class="font-medium text-sm text-slate-300">${ep.name}</span>
+                                <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">vs Baseline</span>
+                            </div>
+                            
+                            <div class="flex justify-between items-end mb-2">
+                                <div>
+                                    <div class="text-2xl font-bold ${colorClass}">${proxyData.rps.toFixed(0)} <span class="text-xs text-slate-500">req/s</span></div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs ${rpsDiff < 0 ? 'text-red-400' : 'text-emerald-400'}">${rpsDiff}%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-1 mt-3 text-xs text-slate-400">
+                                <div class="flex justify-between">
+                                    <span>Latência Média:</span>
+                                    <span class="text-slate-200">${proxyData.time_per_request.toFixed(2)} ms</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>P99 (Tail):</span>
+                                    <span class="text-slate-200">${proxyData.p99} ms</span>
+                                </div>
+                                <div class="flex justify-between border-t border-slate-700 pt-1 mt-1 font-semibold">
+                                    <span>Overhead Interno:</span>
+                                    <span class="${overhead > 5 ? 'text-amber-400' : 'text-emerald-400'}">+${overhead} ms</span>
+                                </div>
+                            </div>
+                        </div>`;
+                    }
+                });
+                
+                html += `</div></div>`;
+                container.innerHTML += html;
+            });
+        }
+    </script>
+</body>
+</html>

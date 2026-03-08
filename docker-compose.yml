@@ -25,6 +25,17 @@ services:
       timeout: 2s
       retries: 3
 
+  benchmark-ui:
+    build: 
+      context: .
+      dockerfile: compose/benchmark-ui/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - static-backend
+      - nginx-proxy
+      - inventory-adapter
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.1
     command:
