@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    purge)
+        # Remove dados de runtime apenas no purge
+        rm -rf /var/log/n-gate
+        # Remove user de sistema
+        if id -u n-gate >/dev/null 2>&1; then
+            userdel n-gate || true
+        fi
+        ;;
+esac
+
+systemctl daemon-reload || true

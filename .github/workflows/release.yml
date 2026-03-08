@@ -1,0 +1,64 @@
+name: Build and Package .deb
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B -DskipTests package
+
+      - name: Build .deb package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="n-gate_${VERSION}_all"
+
+          # Montar árvore FHS
+          mkdir -p "${PKG}/opt/n-gate"
+          mkdir -p "${PKG}/etc/n-gate/rules/default"
+          mkdir -p "${PKG}/etc/n-gate/ssl"
+          mkdir -p "${PKG}/var/log/n-gate"
+          mkdir -p "${PKG}/lib/systemd/system"
+          mkdir -p "${PKG}/etc/logrotate.d"
+          mkdir -p "${PKG}/DEBIAN"
+
+          # Copiar artefatos
+          cp target/n-gate-*.jar "${PKG}/opt/n-gate/n-gate.jar"
+          cp debian/adapter-production.yaml "${PKG}/etc/n-gate/adapter.yaml"
+          cp debian/rules/default/Rules.groovy "${PKG}/etc/n-gate/rules/default/"
+          cp src/main/resources/log4j2.xml "${PKG}/etc/n-gate/"
+          cp debian/n-gate.service "${PKG}/lib/systemd/system/"
+          cp debian/n-gate.logrotate "${PKG}/etc/logrotate.d/n-gate"
+
+          # Control files
+          sed "s/^Version:.*/Version: ${VERSION}/" debian/control > "${PKG}/DEBIAN/control"
+          cp debian/conffiles "${PKG}/DEBIAN/"
+          cp debian/postinst "${PKG}/DEBIAN/" && chmod 755 "${PKG}/DEBIAN/postinst"
+          cp debian/prerm "${PKG}/DEBIAN/" && chmod 755 "${PKG}/DEBIAN/prerm"
+          cp debian/postrm "${PKG}/DEBIAN/" && chmod 755 "${PKG}/DEBIAN/postrm"
+
+          # Build .deb
+          dpkg-deb --build "${PKG}"
+
+          echo "DEB_FILE=${PKG}.deb" >> "$GITHUB_ENV"
+
+      - name: Upload .deb to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "${DEB_FILE}"

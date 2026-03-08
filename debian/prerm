@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+# Para e desabilita o serviço antes de remover
+systemctl stop n-gate.service || true
+systemctl disable n-gate.service || true

@@ -1,0 +1,10 @@
+Package: n-gate
+Version: 1.0.0
+Architecture: all
+Maintainer: Lucas Nishimura <lucas.nishimura@gmail.com>
+Depends: default-jre-headless (>= 21) | openjdk-21-jre-headless
+Section: net
+Priority: optional
+Description: n-gate API Gateway
+ High-performance reverse proxy and API gateway with
+ Groovy-based dynamic routing rules and OAuth2 support.

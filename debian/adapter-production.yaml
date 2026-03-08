@@ -1,0 +1,46 @@
+---
+# n-gate Production Configuration
+# This file is installed to /etc/n-gate/adapter.yaml by the .deb package.
+# Customize it for your environment.
+
+endpoints:
+  default:
+    rulesBasePath: "/etc/n-gate/rules"
+
+    listeners:
+      http:
+        listenAddress: "0.0.0.0"
+        listenPort: 9090
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "backend-1"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+    backends:
+      backend-1:
+        backendName: "backend-1"
+        xOriginalHost: null
+        endPointUrl: "http://localhost:8080"
+
+    ruleMapping: "default/Rules.groovy"
+    ruleMappingThreads: 1
+    socketTimeout: 30
+
+    # Jetty Thread Pool
+    jettyMinThreads: 16
+    jettyMaxThreads: 500
+    jettyIdleTimeout: 120000
+
+    # OkHttp Connection Pool
+    connectionPoolSize: 256
+    connectionPoolKeepAliveMinutes: 5
+
+    # OkHttp Dispatcher
+    dispatcherMaxRequests: 512
+    dispatcherMaxRequestsPerHost: 256

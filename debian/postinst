@@ -1,0 +1,24 @@
+#!/bin/bash
+set -e
+
+# Cria user de sistema se não existir
+if ! id -u n-gate >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin n-gate
+fi
+
+# Cria diretórios de runtime
+mkdir -p /var/log/n-gate
+mkdir -p /etc/n-gate/ssl
+
+# Ajusta permissões
+chown -R n-gate:n-gate /var/log/n-gate
+chown -R n-gate:n-gate /etc/n-gate/ssl
+
+# Habilita o serviço (não inicia automaticamente)
+systemctl daemon-reload
+systemctl enable n-gate.service
+
+echo "n-gate installed successfully."
+echo "  - Edit /etc/n-gate/adapter.yaml to configure"
+echo "  - Place rules in /etc/n-gate/rules/"
+echo "  - Start with: systemctl start n-gate"
