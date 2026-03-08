@@ -16,7 +16,14 @@ from datetime import datetime
 # ─── Configuração ────────────────────────────────────────────────────────────
 
 BASELINE_URL = "http://localhost:3080/"
-PROXY_URL = "http://localhost:9091/"
+NGINX_PROXY_URL = "http://localhost:4080/"
+JAVALIN_PROXY_URL = "http://localhost:9091/"
+
+ENDPOINTS = [
+    ("baseline", "Baseline (nginx direto)", BASELINE_URL),
+    ("nginx_proxy", "Proxy (nginx -> nginx)", NGINX_PROXY_URL),
+    ("javalin_proxy", "Proxy (adapter -> nginx)", JAVALIN_PROXY_URL)
+]
 
 TOTAL_REQUESTS = 5000
 CONCURRENCY_LEVELS = [1, 10, 50, 100, 500]
@@ -96,7 +103,9 @@ def print_report(results, mode="requests"):
     print("=" * 78)
     print()
     print(f"  Baseline : {BASELINE_URL} (nginx direto)")
-    print(f"  Proxy    : {PROXY_URL} (adapter → nginx)")
+    for target_id, name, url in ENDPOINTS:
+        if target_id != "baseline":
+            print(f"  {name:<8} : {url}")
     print(f"  Mode     : {mode}")
     if mode == 'requests':
         print(f"  Requests : {TOTAL_REQUESTS} por cenário")
@@ -106,65 +115,74 @@ def print_report(results, mode="requests"):
 
     for concurrency in CONCURRENCY_LEVELS:
         baseline = results.get(("baseline", concurrency))
-        proxy = results.get(("proxy", concurrency))
-
-        if not baseline or not proxy:
-            print(f"  ⚠ Dados insuficientes para concorrência {concurrency}")
-            continue
-
-        overhead_ms = proxy["time_per_request"] - baseline["time_per_request"]
-        overhead_pct = (overhead_ms / baseline["time_per_request"]) * 100 if baseline["time_per_request"] > 0 else 0
-
+        
         print("─" * 78)
         print(f"  CONCORRÊNCIA: {concurrency}")
         print("─" * 78)
         print()
 
-        # Tabela principal
-        header = f"  {'Métrica':<35} {'Baseline':>12} {'Proxy':>12} {'Overhead':>12}"
-        print(header)
-        print(f"  {'─' * 71}")
+        if not baseline:
+             print(f"  ⚠ Baseline não executado para concorrência {concurrency}")
+             continue
 
-        rows = [
-            ("Req/s", "rps", "{:.1f}", False),
-            ("Tempo médio (ms)", "time_per_request", "{:.2f}", True),
-            ("p50 (ms)", "p50", "{:.0f}", True),
-            ("p90 (ms)", "p90", "{:.0f}", True),
-            ("p95 (ms)", "p95", "{:.0f}", True),
-            ("p99 (ms)", "p99", "{:.0f}", True),
-            ("p100 / max (ms)", "p100", "{:.0f}", True),
-            ("Falhas", "failed_requests", "{:.0f}", False),
-        ]
+        for target_id, target_name, target_url in ENDPOINTS:
+            if target_id == "baseline":
+                continue
+                
+            proxy = results.get((target_id, concurrency))
+            if not proxy:
+                 print(f"  ⚠ Proxy ({target_id}) não executado para concorrência {concurrency}")
+                 continue
+                 
+            overhead_ms = proxy["time_per_request"] - baseline["time_per_request"]
+            overhead_pct = (overhead_ms / baseline["time_per_request"]) * 100 if baseline["time_per_request"] > 0 else 0
 
-        for label, key, fmt, show_overhead in rows:
-            b_val = baseline.get(key, 0)
-            p_val = proxy.get(key, 0)
+            # Tabela principal
+            print(f"  Comparativo: {target_name}")
+            header = f"  {'Métrica':<35} {'Baseline':>12} {'Proxy':>12} {'Overhead':>12}"
+            print(header)
+            print(f"  {'─' * 71}")
 
-            b_str = fmt.format(b_val)
-            p_str = fmt.format(p_val)
+            rows = [
+                ("Req/s", "rps", "{:.1f}", False),
+                ("Tempo médio (ms)", "time_per_request", "{:.2f}", True),
+                ("p50 (ms)", "p50", "{:.0f}", True),
+                ("p90 (ms)", "p90", "{:.0f}", True),
+                ("p95 (ms)", "p95", "{:.0f}", True),
+                ("p99 (ms)", "p99", "{:.0f}", True),
+                ("p100 / max (ms)", "p100", "{:.0f}", True),
+                ("Falhas", "failed_requests", "{:.0f}", False),
+            ]
 
-            if show_overhead and b_val > 0:
-                diff = p_val - b_val
-                sign = "+" if diff >= 0 else ""
-                o_str = f"{sign}{fmt.format(diff)}"
-            elif key == "rps" and b_val > 0:
-                diff_pct = ((p_val - b_val) / b_val) * 100
-                o_str = f"{diff_pct:+.1f}%"
-            else:
-                o_str = "—"
+            for label, key, fmt, show_overhead in rows:
+                b_val = baseline.get(key, 0)
+                p_val = proxy.get(key, 0)
 
-            print(f"  {label:<35} {b_str:>12} {p_str:>12} {o_str:>12}")
+                b_str = fmt.format(b_val)
+                p_str = fmt.format(p_val)
 
-        print()
+                if show_overhead and b_val > 0:
+                    diff = p_val - b_val
+                    sign = "+" if diff >= 0 else ""
+                    o_str = f"{sign}{fmt.format(diff)}"
+                elif key == "rps" and b_val > 0:
+                    diff_pct = ((p_val - b_val) / b_val) * 100
+                    o_str = f"{diff_pct:+.1f}%"
+                else:
+                    o_str = "—"
 
-        # Barras visuais
-        max_latency = max(proxy["time_per_request"], baseline["time_per_request"])
-        print(f"  Latência média:")
-        print(f"    Baseline {format_bar(baseline['time_per_request'], max_latency)} {baseline['time_per_request']:.2f}ms")
-        print(f"    Proxy    {format_bar(proxy['time_per_request'], max_latency)} {proxy['time_per_request']:.2f}ms")
-        print()
-        print(f"  ➜ Overhead do adapter: {overhead_ms:.2f}ms ({overhead_pct:.1f}%)")
-        print()
+                print(f"  {label:<35} {b_str:>12} {p_str:>12} {o_str:>12}")
+
+            print()
+
+            # Barras visuais
+            max_latency = max(proxy["time_per_request"], baseline["time_per_request"])
+            print(f"  Latência média:")
+            print(f"    Baseline {format_bar(baseline['time_per_request'], max_latency)} {baseline['time_per_request']:.2f}ms")
+            print(f"    Proxy    {format_bar(proxy['time_per_request'], max_latency)} {proxy['time_per_request']:.2f}ms")
+            print()
+            print(f"  ➜ Overhead do {target_id}: {overhead_ms:.2f}ms ({overhead_pct:.1f}%)")
+            print()
 
     # Resumo final
     print("=" * 78)
@@ -173,11 +191,17 @@ def print_report(results, mode="requests"):
     print()
     for concurrency in CONCURRENCY_LEVELS:
         baseline = results.get(("baseline", concurrency))
-        proxy = results.get(("proxy", concurrency))
-        if baseline and proxy:
-            overhead = proxy["time_per_request"] - baseline["time_per_request"]
-            print(f"  c={concurrency:<4}  overhead médio: {overhead:.2f}ms  "
-                  f"(baseline: {baseline['time_per_request']:.2f}ms → proxy: {proxy['time_per_request']:.2f}ms)")
+        if not baseline:
+            continue
+        print(f"  c={concurrency:<4}")
+        for target_id, _, _ in ENDPOINTS:
+            if target_id == "baseline":
+                continue
+            proxy = results.get((target_id, concurrency))
+            if proxy:
+                overhead = proxy["time_per_request"] - baseline["time_per_request"]
+                print(f"    {target_id:<15}: overhead médio: {overhead:.2f}ms "
+                      f"(baseline: {baseline['time_per_request']:.2f}ms → proxy: {proxy['time_per_request']:.2f}ms)")
     print()
     print("=" * 78)
 
@@ -187,7 +211,8 @@ def print_report(results, mode="requests"):
         "mode": mode,
         "config": {
             "baseline_url": BASELINE_URL,
-            "proxy_url": PROXY_URL,
+            "nginx_proxy_url": NGINX_PROXY_URL,
+            "javalin_proxy_url": JAVALIN_PROXY_URL,
             "total_requests": TOTAL_REQUESTS if mode == "requests" else None,
             "timed_duration": TIMED_DURATION if mode == "timed" else None,
             "concurrency_levels": CONCURRENCY_LEVELS,
@@ -218,7 +243,7 @@ def main():
 
     # Verificar conectividade
     print("\n🔍 Verificando conectividade...")
-    for name, url in [("Baseline (nginx)", BASELINE_URL), ("Proxy (adapter)", PROXY_URL)]:
+    for target_id, name, url in ENDPOINTS:
         try:
             result = subprocess.run(["curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}", url],
                                     capture_output=True, text=True, timeout=5)
@@ -227,17 +252,16 @@ def main():
                 print(f"  ✅ {name}: OK")
             else:
                 print(f"  ❌ {name}: HTTP {code}")
-                sys.exit(1)
+                # Não saímos se o javalin/nginx proxies não estiverem prontos no startup imediatamente
         except Exception as e:
             print(f"  ❌ {name}: {e}")
-            sys.exit(1)
 
     results = {}
 
     # Warmup
     print(f"\n🔥 Warmup ({WARMUP_REQUESTS} requests em cada endpoint)...")
-    run_ab(BASELINE_URL, WARMUP_REQUESTS, 1)
-    run_ab(PROXY_URL, WARMUP_REQUESTS, 1)
+    for target_id, target_name, target_url in ENDPOINTS:
+        run_ab(target_url, WARMUP_REQUESTS, 1)
     print("  ✅ Warmup concluído")
 
     # ── Fase 1: Benchmark por contagem de requests ────────────────────────
@@ -248,19 +272,13 @@ def main():
     for concurrency in CONCURRENCY_LEVELS:
         print(f"\n📊 Benchmark com concorrência={concurrency}, requests={TOTAL_REQUESTS}")
 
-        print(f"  → Baseline (nginx direto)...")
-        output = run_ab(BASELINE_URL, TOTAL_REQUESTS, concurrency)
-        metrics = parse_ab_output(output)
-        if metrics:
-            results[("baseline", concurrency)] = metrics
-            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg")
-
-        print(f"  → Proxy (adapter)...")
-        output = run_ab(PROXY_URL, TOTAL_REQUESTS, concurrency)
-        metrics = parse_ab_output(output)
-        if metrics:
-            results[("proxy", concurrency)] = metrics
-            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg")
+        for target_id, target_name, target_url in ENDPOINTS:
+            print(f"  → {target_name}...")
+            output = run_ab(target_url, TOTAL_REQUESTS, concurrency)
+            metrics = parse_ab_output(output)
+            if metrics:
+                results[(target_id, concurrency)] = metrics
+                print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg")
 
     print_report(results, mode="requests")
 
@@ -274,21 +292,14 @@ def main():
     for concurrency in CONCURRENCY_LEVELS:
         print(f"\n⏱  Benchmark com concorrência={concurrency}, duração={TIMED_DURATION}s")
 
-        print(f"  → Baseline (nginx direto)...")
-        output = run_ab_timed(BASELINE_URL, TIMED_DURATION, concurrency)
-        metrics = parse_ab_output(output)
-        if metrics:
-            timed_results[("baseline", concurrency)] = metrics
-            total = int(metrics.get('complete_requests', 0))
-            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg, {total} total reqs")
-
-        print(f"  → Proxy (adapter)...")
-        output = run_ab_timed(PROXY_URL, TIMED_DURATION, concurrency)
-        metrics = parse_ab_output(output)
-        if metrics:
-            timed_results[("proxy", concurrency)] = metrics
-            total = int(metrics.get('complete_requests', 0))
-            print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg, {total} total reqs")
+        for target_id, target_name, target_url in ENDPOINTS:
+            print(f"  → {target_name}...")
+            output = run_ab_timed(target_url, TIMED_DURATION, concurrency)
+            metrics = parse_ab_output(output)
+            if metrics:
+                timed_results[(target_id, concurrency)] = metrics
+                total = int(metrics.get('complete_requests', 0))
+                print(f"    {metrics.get('rps', 0):.1f} req/s, {metrics.get('time_per_request', 0):.2f}ms avg, {total} total reqs")
 
     print_report(timed_results, mode="timed")
 
