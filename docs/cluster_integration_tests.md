@@ -13,8 +13,11 @@ O n-gate suporta um modo cluster opcional via [NGrid](https://github.com/nishisa
 | Polling assíncrono | [Awaitility](https://github.com/awaitility/awaitility) | 4.2.2 |
 | HTTP Client | OkHttp | 4.12.0 |
 | Backend mock | Nginx Alpine | latest |
+| IdP (OAuth) | Keycloak | 26.0 |
 
 ## Topologia dos Testes
+
+### Cluster Básico (`NGridClusterIntegrationTest`)
 
 ```
                     ┌────────────────────┐
@@ -38,108 +41,165 @@ O n-gate suporta um modo cluster opcional via [NGrid](https://github.com/nishisa
                     └────────────────────┘
 ```
 
-- **N1/N2**: Instâncias n-gate com cluster mode habilitado
-- **Porta 9091**: Proxy HTTP (listener `http-noauth`)
-- **Porta 9190**: Spring Boot Actuator (health/metrics)
-- **Porta 7100**: NGrid TCP mesh (gossip + replicação)
-- **mock-backend**: Nginx retornando `{"status":"ok"}` em todas as rotas
+### Cluster com OAuth (`NGridClusterOAuthIntegrationTest`)
+
+```
+              ┌──────────────────────────────┐
+              │  Docker Network (isolada)     │
+              │                              │
+              │  ┌──────────┐ ┌───────────┐  │
+              │  │ Keycloak │ │ mock-bknd │  │
+              │  │  :8080   │ │   :8080   │  │
+              │  └────┬─────┘ └─────┬─────┘  │
+              │       │ OAuth       │ HTTP   │
+              │   ┌───┴─────────────┴───┐    │
+              │   │                     │    │
+              │ ┌─┴──┐              ┌──┴─┐  │
+              │ │ N1 │    NGrid     │ N2 │  │
+              │ │9091│◄────────────►│9091│  │
+              │ │7100│  DistMap     │7100│  │
+              │ └────┘  (tokens)    └────┘  │
+              └──────────────────────────────┘
+```
+
+- **N1/N2**: Instâncias n-gate com cluster mode + OAuth habilitados
+- **Keycloak**: IdP com realm `inventory-dev`, client `ngate-client`
+- **DistMap (tokens)**: `DistributedMap<String, SerializableTokenData>` do NGrid
 
 ## Cenários de Teste
 
-### T1: Mesh Formation
+### Cluster Básico (sem OAuth) — `NGridClusterIntegrationTest`
 
-**Classe**: `NGridClusterIntegrationTest#testClusterMeshFormation`
+| # | Teste | Descrição |
+|---|-------|-----------|
+| T1 | Mesh Formation | 2 nós formam mesh NGrid (`activeMembers: 2`) |
+| T2 | Leader Election | Exatamente 1 líder (XOR validation) |
+| T3 | Proxy Funcional | HTTP 200 em ambos os nós via mock backend |
+| T4 | Instance ID | `instanceId` distinto por nó no health |
+| T5 | Graceful Shutdown | Nó 2 para, Nó 1 continua com `activeMembers ≤ 1` |
 
-Valida que 2 nós n-gate se descobrem via seeds TCP e formam um mesh NGrid funcional.
+### Token Sharing OAuth (com Keycloak) — `NGridClusterOAuthIntegrationTest`
 
-**Assertions:**
-- Ambos os nós reportam `status: UP` no `/actuator/health`
-- Ambos reportam `clusterMode: true` nos detalhes do health
-- Ambos reportam `activeMembers: 2`
+| # | Teste | Descrição |
+|---|-------|-----------|
+| T6 | Token Sharing POW-RBL | Nó 1 obtém token do Keycloak → publica no `DistributedMap` → Nó 2 lê do mapa sem ir ao IdP |
+| T7 | Resiliência na Queda | Nó 1 cai → Nó 2 continua servindo com token válido (cache local + DistributedMap) |
 
-**Timeout:** 90s (inclui tempo de gossip + handshake + leader election)
-
----
-
-### T2: Leader Election
-
-**Classe**: `NGridClusterIntegrationTest#testLeaderElection`
-
-Valida que o NGrid elege exatamente 1 líder entre os 2 nós (quorum epoch-based).
-
-**Assertions:**
-- Exatamente um nó reporta `isLeader: true` (validado via XOR)
-- O outro reporta `isLeader: false`
-
----
-
-### T3: Proxy Funcional
-
-**Classe**: `NGridClusterIntegrationTest#testProxyFunctional`
-
-Valida que ambos os nós encaminham requests HTTP corretamente para o backend mock, confirmando que o cluster mode **não interfere** no hot path do proxy.
-
-**Assertions:**
-- HTTP GET em ambos os nós retorna `200 OK`
-- O body contém `{"status":"ok"}` do backend mock
-- B3 tracing headers são injetados (confirmado via logs)
-
-> Este teste também valida a **ausência da regressão da Sessão 3** (deadlock de inicialização Spring com Virtual Threads que fazia o proxy aceitar TCP mas nunca processar requests).
-
----
-
-### T4: Instance ID Distinto
-
-**Classe**: `NGridClusterIntegrationTest#testHealthReportsInstanceId`
-
-Valida que cada nó tem um `instanceId` único, essencial para correlacionar traces e logs em ambiente distribuído.
-
-**Assertions:**
-- `instanceId` do Node 1 = `test-node-1` (via `NGATE_INSTANCE_ID` env)
-- `instanceId` do Node 2 = `test-node-2`
-- Ambos são distintos (`assertNotEquals`)
-
----
-
-### T5: Graceful Shutdown
-
-**Classe**: `NGridClusterIntegrationTest#testGracefulShutdown`
-
-Valida que ao parar o Nó 2, o Nó 1 continua operando normalmente (sem crash, sem hang) e detecta a saída do peer.
-
-**Assertions:**
-- Nó 1 mantém `status: UP` após shutdown do Nó 2
-- Proxy do Nó 1 continua retornando `200 OK`
-- `activeMembers` cai para ≤ 1 dentro de 60s
+> **POW-RBL** = Publish-on-write + Read-before-login. Qualquer nó que obtém um token publica no mapa distribuído. Antes de ir ao IdP, cada nó verifica se existe token válido no mapa.
 
 ---
 
 ## Como Executar
 
+### Pré-requisitos
+
+1. **Docker** rodando (versão ≥ 20.10, testado com 29.3.0)
+2. **`~/.m2/settings.xml`** com credenciais do GitHub Packages (para resolver `nishi-utils`)
+3. **Portas livres**: nenhuma porta fixa necessária (Testcontainers usa portas dinâmicas)
+4. **Espaço em disco**: ~500MB para imagens Docker (n-gate, Nginx, Keycloak, Ryuk)
+
+### Comandos
+
 ```bash
-# Pré-requisitos: Docker rodando, ~/.m2/settings.xml com acesso ao GitHub Packages
+# ─── Executar TODOS os testes de cluster ───────────────────────
+mvn -s ~/.m2/settings.xml test -Dtest="NGridCluster*IntegrationTest"
 
-# Executar apenas os testes de cluster
+# ─── Executar apenas testes básicos (sem OAuth, mais rápido) ───
 mvn -s ~/.m2/settings.xml test -Dtest="NGridClusterIntegrationTest"
+# Tempo esperado: ~80s
 
-# Tempo esperado: ~80s (build da imagem Docker + startup dos containers + assertions)
+# ─── Executar apenas testes OAuth (com Keycloak) ──────────────
+mvn -s ~/.m2/settings.xml test -Dtest="NGridClusterOAuthIntegrationTest"
+# Tempo esperado: ~120s (Keycloak leva ~30s para subir)
+
+# ─── Executar com logs verbose (debug) ────────────────────────
+mvn -s ~/.m2/settings.xml test -Dtest="NGridCluster*IntegrationTest" \
+  -Dorg.slf4j.simpleLogger.defaultLogLevel=debug
 ```
 
 > **Nota:** Na primeira execução, o Docker buildará a imagem n-gate via Dockerfile multi-stage (~2-3 min). Execuções subsequentes usam cache (~20s de build).
+
+### Interpretando os Logs
+
+Os logs dos containers são prefixados para fácil identificação:
+
+| Prefixo | Container |
+|---------|-----------|
+| `[node-1]` | n-gate Nó 1 (cluster básico) |
+| `[node-2]` | n-gate Nó 2 (cluster básico) |
+| `[oauth-node-1]` | n-gate Nó 1 (cluster OAuth) |
+| `[oauth-node-2]` | n-gate Nó 2 (cluster OAuth) |
+| `[keycloak]` | Keycloak IdP |
+
+**Mensagens-chave nos logs:**
+
+```
+# Mesh NGrid formado
+"NGrid cluster started — nodeId: [xxx]"
+"Leadership change — isLeader: [true/false]"
+
+# Token Sharing POW-RBL
+"Token [test-keycloak] published to cluster DistributedMap"    ← publicou
+"Token [test-keycloak] loaded from cluster DistributedMap"     ← leu do mapa
+"Sent New Token: [xxx***]"                                      ← login no IdP
+```
+
+---
+
+## Troubleshooting
+
+### Docker API incompatível
+
+```
+client version 1.32 is too old. Minimum supported API version is 1.40
+```
+
+**Causa:** Testcontainers 1.x usa API Docker antiga. **Solução:** Usar Testcontainers ≥ 2.0.x (já configurado).
+
+### Permissões no `target/`
+
+```
+AccessDeniedException: target/test-classes/...
+```
+
+**Causa:** Docker compose anterior criou arquivos como `root` no `target/`.
+**Solução:**
+```bash
+docker run --rm -v $(pwd)/target:/target alpine chown -R $(id -u):$(id -g) /target
+```
+
+### Timeout na formação do mesh
+
+Se os testes falham com `ConditionTimeout` no mesh formation:
+- Verifique se o Docker tem ≥ 2GB RAM disponível
+- Em CI, aumente os timeouts no teste (de 90s para 120s)
+- Confirme que a rede Docker não está bloqueando tráfego inter-container
+
+### Keycloak lento para subir
+
+Se os testes OAuth falham no startup do Keycloak:
+- Keycloak 26.0 pode levar até 60s no primeiro start
+- O `startupTimeout` já está em 120s — suficiente para CI
+
+---
 
 ## Arquivos Envolvidos
 
 | Arquivo | Propósito |
 |---|---|
-| [NGridClusterIntegrationTest.java](../src/test/java/dev/nishisan/ngate/cluster/NGridClusterIntegrationTest.java) | Classe de teste principal |
+| [NGridClusterIntegrationTest.java](../src/test/java/dev/nishisan/ngate/cluster/NGridClusterIntegrationTest.java) | Testes T1-T5 (cluster básico) |
+| [NGridClusterOAuthIntegrationTest.java](../src/test/java/dev/nishisan/ngate/cluster/NGridClusterOAuthIntegrationTest.java) | Testes T6-T7 (OAuth token sharing) |
 | [Dockerfile](../Dockerfile) | Build multi-stage da imagem n-gate |
-| [adapter-test-cluster.yaml](../src/test/resources/adapter-test-cluster.yaml) | Config de cluster para testes (sem OAuth) |
+| [adapter-test-cluster.yaml](../src/test/resources/adapter-test-cluster.yaml) | Config cluster sem OAuth |
+| [adapter-test-cluster-oauth.yaml](../src/test/resources/adapter-test-cluster-oauth.yaml) | Config cluster com OAuth + Keycloak |
 | [application-test.properties](../src/test/resources/application-test.properties) | Profile Spring Boot para testes |
 | [mock-backend.conf](../src/test/resources/testcontainers/mock-backend.conf) | Config Nginx do backend mock |
+| [realm-inventory-dev.json](../src/test/resources/testcontainers/realm-inventory-dev.json) | Realm Keycloak para import |
 
 ## Decisões de Design
 
-1. **`GenericContainer` sobre `DockerComposeContainer`**: Dá controle individual sobre lifecycle de cada nó (parar um, verificar o outro).
-2. **Sem OAuth nos testes**: Os cenários focam no cluster NGrid — o fluxo OAuth+Keycloak é ortogonal e será testado separadamente.
-3. **Awaitility sobre `Thread.sleep`**: Polling com backoff evita flakiness em CI com recursos limitados.
-4. **`ImageFromDockerfile`**: A imagem é buildada a partir do Dockerfile do projeto, garantindo que os testes validam exatamente o que será deployado.
+1. **`GenericContainer` sobre `DockerComposeContainer`**: Controle individual sobre lifecycle de cada nó
+2. **Sem OAuth nos testes básicos**: Os cenários T1-T5 focam no cluster NGrid — rápido e sem dependência do Keycloak
+3. **Awaitility sobre `Thread.sleep`**: Polling com backoff evita flakiness em CI
+4. **`ImageFromDockerfile`**: Build a partir do Dockerfile real, garantindo paridade com produção
+5. **Race condition no T6 é aceitável**: O POW-RBL não garante que apenas 1 nó fale com o IdP — ambos podem fazer login quase simultaneamente. O teste aceita ambos os cenários (ideal: leu do mapa; aceitável: fez login próprio)
