@@ -229,6 +229,15 @@ public class NGridClusterRulesDeployIntegrationTest {
     @Order(2)
     @DisplayName("T8: Standalone rules deploy — deploy no nó 1, swap local confirmado")
     void testStandaloneRulesDeploy() throws IOException {
+        // 0. Aguardar Admin API pronto (ApplicationReadyEvent pode ter delay)
+        log.info("Aguardando Admin API ficar pronta no nó 1...");
+        await().atMost(30, TimeUnit.SECONDS)
+                .pollInterval(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> {
+                    int status = getStatusCodeWithAuth(adminUrl(node1, "/version"), API_KEY);
+                    assertEquals(200, status, "Admin API should return 200 with correct API key");
+                });
+
         // 1. Verificar que inicialmente não há bundle ativo
         JsonNode versionBefore = getJsonWithAuth(adminUrl(node1, "/version"), API_KEY);
         log.info("Version before deploy: {}", versionBefore);
