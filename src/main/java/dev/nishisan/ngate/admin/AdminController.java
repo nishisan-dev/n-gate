@@ -28,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -58,6 +59,18 @@ public class AdminController {
 
     @Autowired
     private ConfigurationManager configurationManager;
+
+    /**
+     * Trata erros de multipart (ex: request sem Content-Type multipart).
+     */
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<?> handleMultipartError(MultipartException ex) {
+        logger.warn("Multipart error: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "Invalid multipart request: " + ex.getMessage(),
+                "timestamp", Instant.now().toString()
+        ));
+    }
 
     /**
      * Deploy de rules via multipart upload.
