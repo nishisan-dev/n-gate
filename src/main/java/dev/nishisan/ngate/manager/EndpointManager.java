@@ -47,6 +47,14 @@ public class EndpointManager {
     private final Logger logger = LogManager.getLogger(EndpointManager.class);
     private final Map<String, EndpointWrapper> endpoints = new ConcurrentHashMap<>();
     private final List<EndpointWrapper> activeWrappers = new ArrayList<>();
+
+    /**
+     * Retorna a lista de wrappers ativos (usada pelo RulesBundleManager
+     * para propagar swap do GSE em todos os endpoints).
+     */
+    public List<EndpointWrapper> getActiveWrappers() {
+        return activeWrappers;
+    }
     private GroovyScriptEngine customGse;
     @Autowired
     private ConfigurationManager configurationManager;

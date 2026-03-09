@@ -52,6 +52,14 @@ public class ConfigurationManager {
 
     private Logger logger = LogManager.getLogger(ConfigurationManager.class);
     private ServerConfiguration configuration = null;
+
+    /**
+     * Retorna a configuração raiz (usada pelo AdminController para
+     * acessar o bloco admin: do adapter.yaml).
+     */
+    public ServerConfiguration getServerConfiguration() {
+        return configuration;
+    }
     @Autowired
     private OAuthClientManager oauthClientManager;
 
