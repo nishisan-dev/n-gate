@@ -112,7 +112,7 @@ public class HttpProxyManager {
     private static final HostnameVerifier TRUST_ALL_HOSTNAMES = (hostname, session) -> true;
 
     private final EndPointConfiguration configuration;
-    private GroovyScriptEngine gse;
+    private volatile GroovyScriptEngine gse;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ThreadPoolExecutor threadPool;
     private final Logger logger = LogManager.getLogger(HttpProxyManager.class);
@@ -358,6 +358,23 @@ public class HttpProxyManager {
         config.setRecompileGroovySource(true);
         config.setMinimumRecompilationInterval(60); // 60 segundos
         logger.info("GroovyScriptEngine initialized from [{}] with recompilation interval: 60s", rulesPath);
+    }
+
+    /**
+     * Swap atômico do GroovyScriptEngine — usado pelo RulesBundleManager
+     * para aplicar um novo bundle de rules sem parar o proxy.
+     * <p>
+     * Thread-safe: o campo {@code gse} é {@code volatile}, garantindo
+     * que todas as threads veem a nova referência imediatamente.
+     *
+     * @param newGse novo GroovyScriptEngine já inicializado
+     */
+    public void swapGroovyEngine(GroovyScriptEngine newGse) {
+        GroovyScriptEngine old = this.gse;
+        this.gse = newGse;
+        logger.info("GroovyScriptEngine swapped — old: [{}], new: [{}]",
+                old != null ? old.getGroovyClassLoader().getURLs().length + " URLs" : "null",
+                newGse.getGroovyClassLoader().getURLs().length + " URLs");
     }
 
     /**

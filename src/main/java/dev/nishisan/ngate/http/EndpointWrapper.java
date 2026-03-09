@@ -308,6 +308,16 @@ public class EndpointWrapper {
     }
 
     /**
+     * Delega o swap do GroovyScriptEngine para o HttpProxyManager.
+     * Usado pelo {@code RulesBundleManager} ao aplicar um novo bundle de rules.
+     *
+     * @param newGse novo GroovyScriptEngine já inicializado
+     */
+    public void swapGroovyEngine(GroovyScriptEngine newGse) {
+        this.proxyManager.swapGroovyEngine(newGse);
+    }
+
+    /**
      * Para gracefully todos os listeners Javalin deste endpoint.
      * Javalin 7 já implementa drain nativo em {@code stop()}.
      */
