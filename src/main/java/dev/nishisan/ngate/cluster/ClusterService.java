@@ -204,17 +204,25 @@ public class ClusterService {
                 .clusterName(config.getClusterName())
                 .dataDirectory(Path.of(config.getDataDirectory()))
                 .replicationFactor(config.getReplicationFactor())
-                .heartbeatInterval(Duration.ofMillis(500))
-                .leaseTimeout(Duration.ofSeconds(5))
+                .heartbeatInterval(Duration.ofSeconds(1))
+                .leaseTimeout(Duration.ofSeconds(10))
                 .mapName("ngate-tokens");
 
-        // Adicionar peers a partir dos seeds
+        // Adicionar peers a partir dos seeds, excluindo o próprio nó
         if (config.getSeeds() != null) {
+            String localHostname = resolveHostname();
             for (String seed : config.getSeeds()) {
                 String[] parts = seed.split(":");
                 if (parts.length == 2) {
                     String host = parts[0];
                     int port = Integer.parseInt(parts[1]);
+
+                    // Filtrar self-seed: comparar hostname do seed com nodeId e hostname local
+                    if (host.equals(localNodeId) || host.equals(localHostname)) {
+                        logger.debug("Skipping self-seed: [{}]", seed);
+                        continue;
+                    }
+
                     NodeId peerId = NodeId.of(host + ":" + port);
                     NodeInfo peer = new NodeInfo(peerId, host, port);
                     builder.addPeer(peer);
@@ -225,6 +233,14 @@ public class ClusterService {
         }
 
         return builder.build();
+    }
+
+    private static String resolveHostname() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static String resolveNodeId(String configured) {

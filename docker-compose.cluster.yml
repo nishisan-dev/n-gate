@@ -46,7 +46,6 @@ services:
   # --- Nó 1 (base template via YAML anchor) ---
   ngate-node1: &ngate-node
     image: maven:3.9.9-eclipse-temurin-21
-    user: "${UID:-1000}:${GID:-1000}"
     working_dir: /workspace
     depends_on:
       - static-backend
