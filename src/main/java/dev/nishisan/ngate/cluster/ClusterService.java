@@ -223,9 +223,11 @@ public class ClusterService {
                         continue;
                     }
 
-                    NodeId peerId = NodeId.of(host + ":" + port);
+                    // NodeId do peer usa apenas hostname (consistente com o NodeId local)
+                    NodeId peerId = NodeId.of(host);
                     NodeInfo peer = new NodeInfo(peerId, host, port);
                     builder.addPeer(peer);
+                    logger.debug("Added peer: [{}] at [{}:{}]", host, host, port);
                 } else {
                     logger.warn("Invalid seed format (expected host:port): [{}]", seed);
                 }
