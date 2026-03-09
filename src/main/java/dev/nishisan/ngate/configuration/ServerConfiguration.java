@@ -28,6 +28,7 @@ public class ServerConfiguration {
 
     private Map<String, EndPointConfiguration> endpoints = new ConcurrentHashMap<>();
     private ClusterConfiguration cluster;
+    private AdminApiConfiguration admin;
 
     public Map<String, EndPointConfiguration> getEndpoints() {
         return endpoints;
@@ -43,6 +44,14 @@ public class ServerConfiguration {
 
     public void setCluster(ClusterConfiguration cluster) {
         this.cluster = cluster;
+    }
+
+    public AdminApiConfiguration getAdmin() {
+        return admin;
+    }
+
+    public void setAdmin(AdminApiConfiguration admin) {
+        this.admin = admin;
     }
 
 }
