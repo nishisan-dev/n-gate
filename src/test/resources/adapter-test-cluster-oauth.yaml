@@ -1,0 +1,68 @@
+---
+endpoints:
+  default:
+    listeners:
+      # Listener COM OAuth — tráfego que requer token para o backend
+      http-oauth:
+        listenAddress: "0.0.0.0"
+        listenPort: 9091
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "secured-backend"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+    backends:
+      # Backend que requer OAuth client credentials para acessar
+      secured-backend:
+        backendName: "secured-backend"
+        xOriginalHost: null
+        endPointUrl: "http://mock-backend:8080"
+        oauthClientConfig:
+          ssoName: "test-keycloak"
+          clientId: "ngate-client"
+          clientSecret: "ngate-secret"
+          userName: "inventory-svc"
+          password: "inventory-svc-pass"
+          tokenServerUrl: "http://keycloak:8080/realms/inventory-dev/protocol/openid-connect/token"
+          useRefreshToken: true
+          renewBeforeSecs: 5
+          authorizationServerUrl: null
+          authScopes:
+            - "openid"
+            - "profile"
+            - "email"
+
+    ruleMapping: "default/Rules.groovy"
+    ruleMappingThreads: 1
+    socketTimeout: 30
+
+    # Jetty Thread Pool (reduzido para testes)
+    jettyMinThreads: 8
+    jettyMaxThreads: 100
+    jettyIdleTimeout: 30000
+
+    # OkHttp Connection Pool (reduzido para testes)
+    connectionPoolSize: 32
+    connectionPoolKeepAliveMinutes: 1
+
+    # OkHttp Dispatcher (reduzido para testes)
+    dispatcherMaxRequests: 64
+    dispatcherMaxRequestsPerHost: 32
+
+# --- Cluster Mode (NGrid) ---
+cluster:
+  enabled: true
+  host: "0.0.0.0"
+  port: 7100
+  clusterName: "ngate-test-oauth-cluster"
+  seeds:
+    - "ngate-oauth-node1:7100"
+    - "ngate-oauth-node2:7100"
+  replicationFactor: 2
+  dataDirectory: "/tmp/ngrid-test-oauth-data"
