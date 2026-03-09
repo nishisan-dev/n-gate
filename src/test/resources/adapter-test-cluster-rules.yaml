@@ -1,0 +1,58 @@
+---
+endpoints:
+  default:
+    listeners:
+      http-noauth:
+        listenAddress: "0.0.0.0"
+        listenPort: 9091
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "mock-backend"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+    backends:
+      mock-backend:
+        backendName: "mock-backend"
+        xOriginalHost: null
+        endPointUrl: "http://mock-backend:8080"
+
+    ruleMapping: "default/Rules.groovy"
+    ruleMappingThreads: 1
+    socketTimeout: 30
+
+    # Jetty Thread Pool (reduzido para testes)
+    jettyMinThreads: 8
+    jettyMaxThreads: 100
+    jettyIdleTimeout: 30000
+
+    # OkHttp Connection Pool (reduzido para testes)
+    connectionPoolSize: 32
+    connectionPoolKeepAliveMinutes: 1
+
+    # OkHttp Dispatcher (reduzido para testes)
+    dispatcherMaxRequests: 64
+    dispatcherMaxRequestsPerHost: 32
+
+# --- Admin API ---
+admin:
+  enabled: true
+  apiKey: "test-admin-key-12345"
+
+# --- Cluster Mode (NGrid) ---
+# Seeds fixos usando network aliases do Docker
+cluster:
+  enabled: true
+  host: "0.0.0.0"
+  port: 7100
+  clusterName: "ngate-rules-test-cluster"
+  seeds:
+    - "ngate-rules-node1:7100"
+    - "ngate-rules-node2:7100"
+  replicationFactor: 2
+  dataDirectory: "/tmp/ngrid-rules-test-data"
