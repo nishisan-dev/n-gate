@@ -80,7 +80,14 @@ public class RulesBundleManager {
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         this.endpointManager = applicationContext.getBean(EndpointManager.class);
-        this.clusterService = applicationContext.getBean(ClusterService.class);
+
+        // Lookup seguro — ClusterService pode não estar disponível em standalone puro
+        try {
+            this.clusterService = applicationContext.getBean(ClusterService.class);
+        } catch (Exception ex) {
+            logger.info("ClusterService not available — running in standalone mode");
+            this.clusterService = null;
+        }
 
         // Tentar carregar bundle persistido do disco
         RulesBundle persisted = loadFromDisk();
@@ -93,7 +100,7 @@ public class RulesBundleManager {
         }
 
         // Inicializar integração cluster se habilitado
-        if (clusterService.isClusterMode()) {
+        if (clusterService != null && clusterService.isClusterMode()) {
             logger.info("RulesBundleManager: cluster mode — initializing distributed rules map");
             this.distributedRulesMap = clusterService.getDistributedMap(
                     RULES_MAP_NAME, String.class, RulesBundle.class);
