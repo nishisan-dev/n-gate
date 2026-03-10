@@ -1,0 +1,69 @@
+---
+endpoints:
+  default:
+    listeners:
+      http-noauth:
+        listenAddress: "0.0.0.0"
+        listenPort: 9091
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "mock-backend"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+      http-failing:
+        listenAddress: "0.0.0.0"
+        listenPort: 9092
+        ssl: false
+        scriptOnly: false
+        defaultScript: "Default.groovy"
+        defaultBackend: "failing-backend"
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+            ruleMapping: "default/Rules.groovy"
+
+    backends:
+      mock-backend:
+        backendName: "mock-backend"
+        xOriginalHost: null
+        endPointUrl: "http://mock-backend:8080"
+
+      failing-backend:
+        backendName: "failing-backend"
+        xOriginalHost: null
+        endPointUrl: "http://nonexistent-backend:9999"
+
+    ruleMapping: "default/Rules.groovy"
+    ruleMappingThreads: 1
+    socketTimeout: 3
+
+    # Jetty Thread Pool (reduzido para testes)
+    jettyMinThreads: 8
+    jettyMaxThreads: 100
+    jettyIdleTimeout: 30000
+
+    # OkHttp Connection Pool (reduzido para testes)
+    connectionPoolSize: 32
+    connectionPoolKeepAliveMinutes: 1
+
+    # OkHttp Dispatcher (reduzido para testes)
+    dispatcherMaxRequests: 64
+    dispatcherMaxRequestsPerHost: 32
+
+# --- Circuit Breaker (valores agressivos para testes rápidos) ---
+circuitBreaker:
+  enabled: true
+  failureRateThreshold: 50
+  waitDurationInOpenState: 5
+  slidingWindowSize: 10
+  permittedCallsInHalfOpenState: 3
+  slowCallDurationThreshold: 5
+  slowCallRateThreshold: 80
