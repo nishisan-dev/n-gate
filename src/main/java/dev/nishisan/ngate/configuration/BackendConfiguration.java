@@ -16,10 +16,20 @@
  */
 package dev.nishisan.ngate.configuration;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
+ * Configuração de um backend com upstream pool.
+ * <p>
+ * Cada backend possui uma lista de {@link UpstreamMemberConfiguration members}
+ * que representam os servidores reais. O balanceamento de carga é definido
+ * pela {@code strategy} e o health check ativo é opcional.
+ * <p>
+ * <b>API BREAKER v3.0:</b> O campo {@code endPointUrl} foi removido.
+ * Todos os backends devem usar a lista {@code members}.
  *
  * @author Lucas Nishimura <lucas.nishimura@gmail.com>
  * @created 05.01.2023
@@ -27,10 +37,40 @@ import java.util.Map;
 public class BackendConfiguration {
 
     private String backendName;
-    private String xOriginalHost;
-    private String endPointUrl;
     private Map<String, String> defaultHeaders = new HashMap<>();
     private OauthServerClientConfiguration oauthClientConfig;
+    private RateLimitRefConfiguration rateLimit;
+
+    /**
+     * Lista de membros do upstream pool. Obrigatório — pelo menos 1 membro.
+     */
+    private List<UpstreamMemberConfiguration> members = new ArrayList<>();
+
+    /**
+     * Estratégia de load balancing:
+     * <ul>
+     *   <li>{@code round-robin} (padrão) — Weighted Round-Robin dentro de cada priority group</li>
+     *   <li>{@code failover} — Sempre usa o membro de maior prioridade disponível</li>
+     *   <li>{@code random} — Seleção aleatória ponderada pelo weight</li>
+     * </ul>
+     */
+    private String strategy = "round-robin";
+
+    /**
+     * Configuração do active health check. Se null ou disabled, só o circuit
+     * breaker passivo protege os membros.
+     */
+    private UpstreamHealthCheckConfiguration healthCheck;
+
+    // --- Getters/Setters ---
+
+    public String getBackendName() {
+        return backendName;
+    }
+
+    public void setBackendName(String backendName) {
+        this.backendName = backendName;
+    }
 
     public Map<String, String> getDefaultHeaders() {
         return defaultHeaders;
@@ -40,63 +80,13 @@ public class BackendConfiguration {
         this.defaultHeaders = defaultHeaders;
     }
 
-    /**
-     * @return the backendName
-     */
-    public String getBackendName() {
-        return backendName;
-    }
-
-    /**
-     * @param backendName the backendName to set
-     */
-    public void setBackendName(String backendName) {
-        this.backendName = backendName;
-    }
-
-    /**
-     * @return the endPointUrl
-     */
-    public String getEndPointUrl() {
-        return endPointUrl;
-    }
-
-    /**
-     * @param endPointUrl the endPointUrl to set
-     */
-    public void setEndPointUrl(String endPointUrl) {
-        this.endPointUrl = endPointUrl;
-    }
-
-    /**
-     * @return the oauthClientConfig
-     */
     public OauthServerClientConfiguration getOauthClientConfig() {
         return oauthClientConfig;
     }
 
-    /**
-     * @param oauthClientConfig the oauthClientConfig to set
-     */
     public void setOauthClientConfig(OauthServerClientConfiguration oauthClientConfig) {
         this.oauthClientConfig = oauthClientConfig;
     }
-
-    /**
-     * @return the xOriginalHost
-     */
-    public String getxOriginalHost() {
-        return xOriginalHost;
-    }
-
-    /**
-     * @param xOriginalHost the xOriginalHost to set
-     */
-    public void setxOriginalHost(String xOriginalHost) {
-        this.xOriginalHost = xOriginalHost;
-    }
-
-    private RateLimitRefConfiguration rateLimit;
 
     public RateLimitRefConfiguration getRateLimit() {
         return rateLimit;
@@ -105,5 +95,28 @@ public class BackendConfiguration {
     public void setRateLimit(RateLimitRefConfiguration rateLimit) {
         this.rateLimit = rateLimit;
     }
-}
 
+    public List<UpstreamMemberConfiguration> getMembers() {
+        return members;
+    }
+
+    public void setMembers(List<UpstreamMemberConfiguration> members) {
+        this.members = members;
+    }
+
+    public String getStrategy() {
+        return strategy;
+    }
+
+    public void setStrategy(String strategy) {
+        this.strategy = strategy;
+    }
+
+    public UpstreamHealthCheckConfiguration getHealthCheck() {
+        return healthCheck;
+    }
+
+    public void setHealthCheck(UpstreamHealthCheckConfiguration healthCheck) {
+        this.healthCheck = healthCheck;
+    }
+}

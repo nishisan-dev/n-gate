@@ -39,8 +39,8 @@ endpoints:
     backends:
       keycloak:
         backendName: "keycloak"
-        xOriginalHost: null
-        endPointUrl: "http://keycloak:8080"
+        members:
+          - url: "http://keycloak:8080"
         oauthClientConfig:
           ssoName: "inventory-keycloak"
           clientId: "ngate-client"
@@ -58,13 +58,13 @@ endpoints:
 
       keycloak-noauth:
         backendName: "keycloak-noauth"
-        xOriginalHost: null
-        endPointUrl: "http://keycloak:8080"
+        members:
+          - url: "http://keycloak:8080"
 
       static-backend:
         backendName: "static-backend"
-        xOriginalHost: null
-        endPointUrl: "http://static-backend:8080"
+        members:
+          - url: "http://static-backend:8080"
 
     ruleMapping: "default/Rules.groovy"
     ruleMappingThreads: 1

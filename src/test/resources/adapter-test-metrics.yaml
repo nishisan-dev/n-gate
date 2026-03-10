@@ -33,13 +33,13 @@ endpoints:
     backends:
       mock-backend:
         backendName: "mock-backend"
-        xOriginalHost: null
-        endPointUrl: "http://mock-backend:8080"
+        members:
+          - url: "http://mock-backend:8080"
 
       failing-backend:
         backendName: "failing-backend"
-        xOriginalHost: null
-        endPointUrl: "http://nonexistent-backend:9999"
+        members:
+          - url: "http://nonexistent-backend:9999"
 
     ruleMapping: "default/Rules.groovy"
     ruleMappingThreads: 1

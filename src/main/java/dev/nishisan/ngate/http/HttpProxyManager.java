@@ -583,7 +583,9 @@ public class HttpProxyManager {
                     }
                 }
 
-                Request req = this.httpRequestAdapter.getRequest(backendConfiguration, w, internalUid);
+                // TODO Fase 4: substituir por UpstreamPoolManager.selectMember()
+                String memberUrl = backendConfiguration.getMembers().get(0).getUrl();
+                Request req = this.httpRequestAdapter.getRequest(backendConfiguration, memberUrl, w, internalUid);
 
                 // Injeta headers B3 de tracing na request para o backend
                 SpanWrapper requestSpan = tracerWrapper.createSpan("upstream-request");
@@ -761,8 +763,11 @@ public class HttpProxyManager {
             //
             // Aqui vai seguir fazendo o remaping
             //
+            // @deprecated — dead code, mantido para referência
+            String legacyUrl = backendConfiguration.getMembers().isEmpty()
+                    ? "http://localhost" : backendConfiguration.getMembers().get(0).getUrl();
             HttpRequest getRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(backendConfiguration.getEndPointUrl() + handler.contextPath()))
+                    .uri(URI.create(legacyUrl + handler.contextPath()))
                     .GET()
                     .build();
         }

@@ -19,8 +19,8 @@ endpoints:
     backends:
       mock-backend:
         backendName: "mock-backend"
-        xOriginalHost: null
-        endPointUrl: "http://mock-backend:8080"
+        members:
+          - url: "http://mock-backend:8080"
 
     ruleMapping: "default/Rules.groovy"
     ruleMappingThreads: 1

@@ -21,8 +21,8 @@ endpoints:
       # Backend que requer OAuth client credentials para acessar
       secured-backend:
         backendName: "secured-backend"
-        xOriginalHost: null
-        endPointUrl: "http://mock-backend:8080"
+        members:
+          - url: "http://mock-backend:8080"
         oauthClientConfig:
           ssoName: "test-keycloak"
           clientId: "ngate-client"
