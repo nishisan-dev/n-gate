@@ -103,3 +103,15 @@ endpoints:
 # admin:
 #   enabled: true
 #   apiKey: "my-secure-api-key"
+
+# --- Circuit Breaker (Resilience4j) ---
+# Protege backends contra falhas em cascata. Quando a taxa de falha ultrapassa
+# o threshold, o circuito abre e requests são rejeitados imediatamente com HTTP 503.
+# circuitBreaker:
+#   enabled: true
+#   failureRateThreshold: 50          # % de falhas para abrir o circuito
+#   waitDurationInOpenState: 60       # segundos em estado OPEN antes de tentar HALF_OPEN
+#   slidingWindowSize: 100            # número de calls na janela deslizante
+#   permittedCallsInHalfOpenState: 10 # calls permitidos em HALF_OPEN para testar recovery
+#   slowCallDurationThreshold: 5      # segundos — calls mais lentos são considerados "slow"
+#   slowCallRateThreshold: 80         # % de slow calls para abrir o circuito
