@@ -1,0 +1,64 @@
+@startuml
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+
+title Upstream Pool — Arquitetura de Componentes
+
+package "HttpProxyManager" as proxy {
+    [handleRequest()] as hr
+}
+
+package "Upstream Pool System" as upstream {
+    [UpstreamPoolManager] as poolMgr
+    [UpstreamPool\n(per backend)] as pool
+    [UpstreamMemberState\n(per member)] as memberState
+    [UpstreamHealthChecker\n(Virtual Threads)] as hc
+}
+
+package "Configuration" as config {
+    [BackendConfiguration] as backendCfg
+    [UpstreamMemberConfiguration] as memberCfg
+    [UpstreamHealthCheckConfiguration] as hcCfg
+}
+
+package "EndpointManager" as epMgr {
+    [initUpstreamPools()] as initPools
+    [start(healthChecker)] as startHC
+    [shutdown()] as shutdown
+}
+
+' Config relationships
+backendCfg --> memberCfg : "members[]"
+backendCfg --> hcCfg : "healthCheck"
+
+' Lifecycle
+epMgr -down-> poolMgr : "1. initialize(backends)"
+epMgr -down-> hc : "2. start(poolManager)"
+shutdown -down-> hc : "stop()"
+
+' Pool structure
+poolMgr --> pool : "getPool(backendName)"
+pool --> memberState : "selectMember()\n(priority + strategy)"
+
+' Health check
+hc --> memberState : "probeMember()\nmarkHealthy / markUnhealthy"
+
+' Request flow
+hr --> poolMgr : "selectMember(backendName)"
+poolMgr --> pool : "delegates"
+pool ..> hr : "Optional<MemberState>"
+
+note right of pool
+  Strategies:
+  - round-robin (weighted)
+  - failover
+  - random
+end note
+
+note right of hc
+  Virtual Threads (Java 21)
+  Scheduled probing
+  Threshold-based transitions
+end note
+
+@enduml
