@@ -1,0 +1,55 @@
+@startuml rate_limiting
+!theme plain
+title n-gate — Rate Limiting Flow
+
+skinparam backgroundColor #FEFEFE
+skinparam sequenceArrowColor #333333
+skinparam participantBorderColor #333333
+skinparam noteBackgroundColor #FFFFCC
+skinparam noteBorderColor #999999
+
+actor Client
+participant "Javalin\nHandler" as Handler
+participant "Rate Limit\nManager" as RL
+participant "Proxy\nManager" as Proxy
+participant "Backend" as Backend
+
+Client -> Handler : HTTP Request
+
+group Inbound Rate Limiting
+    Handler -> RL : acquirePermission("listener:<name>")
+    alt REJECTED
+        RL --> Handler : REJECTED
+        Handler --> Client : **429** Too Many Requests\n+ x-rate-limit: REJECTED
+    else DELAYED
+        RL --> Handler : DELAYED (após aguardar slot)
+        Handler -> Handler : continua (header x-rate-limit: DELAYED)
+    else ALLOWED
+        RL --> Handler : ALLOWED
+    end
+
+    Handler -> RL : acquirePermission("route:<context>")
+    alt REJECTED
+        RL --> Handler : REJECTED
+        Handler --> Client : **429** Too Many Requests\n+ x-rate-limit-scope: route
+    else ALLOWED / DELAYED
+        RL --> Handler : OK
+    end
+end
+
+Handler -> Proxy : handleRequest()
+
+group Outbound Rate Limiting
+    Proxy -> RL : acquirePermission("backend:<name>")
+    alt REJECTED
+        RL --> Proxy : REJECTED
+        Proxy --> Client : **429** Too Many Requests\n+ x-rate-limit-scope: backend
+    else ALLOWED / DELAYED
+        RL --> Proxy : OK
+        Proxy -> Backend : upstream call
+        Backend --> Proxy : response
+        Proxy --> Client : proxied response
+    end
+end
+
+@enduml
