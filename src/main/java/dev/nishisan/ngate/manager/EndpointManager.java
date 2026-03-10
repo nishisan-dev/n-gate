@@ -22,6 +22,8 @@ import dev.nishisan.ngate.http.circuit.BackendCircuitBreakerManager;
 import dev.nishisan.ngate.http.ratelimit.RateLimitManager;
 import dev.nishisan.ngate.observabitliy.ProxyMetrics;
 import dev.nishisan.ngate.observabitliy.service.TracerService;
+import dev.nishisan.ngate.upstream.UpstreamHealthChecker;
+import dev.nishisan.ngate.upstream.UpstreamPoolManager;
 import groovy.util.GroovyScriptEngine;
 import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
@@ -76,11 +78,18 @@ public class EndpointManager {
     @Autowired
     private RateLimitManager rateLimitManager;
 
+    @Autowired
+    private UpstreamPoolManager upstreamPoolManager;
+
+    private final UpstreamHealthChecker healthChecker = new UpstreamHealthChecker();
+
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         try {
             this.initGse();
+            this.initUpstreamPools();
             this.initEndpoints();
+            this.healthChecker.start(upstreamPoolManager);
         } catch (Throwable ex) {
             logger.error("Failed To Start System, please check configuration and custom gse folder.", ex);
         }
@@ -92,7 +101,9 @@ public class EndpointManager {
      */
     @PreDestroy
     private void shutdown() {
-        logger.info("n-gate graceful shutdown initiated — stopping {} endpoint wrapper(s)...", activeWrappers.size());
+        logger.info("n-gate graceful shutdown initiated...");
+        healthChecker.stop();
+        logger.info("Health checker stopped. Stopping {} endpoint wrapper(s)...", activeWrappers.size());
         for (EndpointWrapper wrapper : activeWrappers) {
             wrapper.stopAllListeners();
         }
@@ -104,13 +115,26 @@ public class EndpointManager {
     }
 
     /**
+     * Inicializa os upstream pools a partir dos backends configurados.
+     * Deve ser chamado ANTES de initEndpoints().
+     */
+    private void initUpstreamPools() {
+        this.configurationManager.loadConfiguration().getEndpoints().forEach((name, epConfig) -> {
+            if (epConfig.getBackends() != null && !epConfig.getBackends().isEmpty()) {
+                upstreamPoolManager.initialize(epConfig.getBackends());
+                logger.info("Upstream pools initialized for endpoint '{}'", name);
+            }
+        });
+    }
+
+    /**
      * Inicializa os endpoints do sistema
      */
     private void initEndpoints() {
         logger.debug("Starting Endpoints");
         logger.debug("Total endpoints size:[{}]", this.configurationManager.loadConfiguration().getEndpoints().size());
         this.configurationManager.loadConfiguration().getEndpoints().forEach((endpointName, endPoingConfiguration) -> {
-            EndpointWrapper wrapper = new EndpointWrapper(oAUthClient, endPoingConfiguration, customGse, tracerService, proxyMetrics, circuitBreakerManager, rateLimitManager);
+            EndpointWrapper wrapper = new EndpointWrapper(oAUthClient, endPoingConfiguration, customGse, tracerService, proxyMetrics, circuitBreakerManager, rateLimitManager, upstreamPoolManager);
             activeWrappers.add(wrapper);
 
             logger.debug("\t Setting UP Endpoing:[{}] With :[{}] listener(s)", endpointName, endPoingConfiguration.getListeners().size());

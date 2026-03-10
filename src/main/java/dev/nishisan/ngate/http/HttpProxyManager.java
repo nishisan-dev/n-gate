@@ -32,6 +32,8 @@ import dev.nishisan.ngate.http.ratelimit.RateLimitResult;
 import dev.nishisan.ngate.observabitliy.ProxyMetrics;
 import dev.nishisan.ngate.observabitliy.wrappers.SpanWrapper;
 import dev.nishisan.ngate.observabitliy.wrappers.TracerWrapper;
+import dev.nishisan.ngate.upstream.UpstreamMemberState;
+import dev.nishisan.ngate.upstream.UpstreamPoolManager;
 import groovy.json.JsonSlurper;
 import groovy.lang.Binding;
 import groovy.util.GroovyScriptEngine;
@@ -50,6 +52,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -132,6 +135,7 @@ public class HttpProxyManager {
     private final ProxyMetrics proxyMetrics;
     private final BackendCircuitBreakerManager circuitBreakerManager;
     private final RateLimitManager rateLimitManager;
+    private final UpstreamPoolManager upstreamPoolManager;
     private Cache<String, OkHttpClient> transientClients;
 
     // Connection pool compartilhado entre todos os OkHttpClients (configurável via adapter.yaml)
@@ -140,12 +144,13 @@ public class HttpProxyManager {
     // Dispatcher compartilhado com Virtual Threads (Java 21)
     private final Dispatcher sharedDispatcher;
 
-    public HttpProxyManager(OAuthClientManager oauthManager, EndPointConfiguration configuration, ProxyMetrics proxyMetrics, BackendCircuitBreakerManager circuitBreakerManager, RateLimitManager rateLimitManager) {
+    public HttpProxyManager(OAuthClientManager oauthManager, EndPointConfiguration configuration, ProxyMetrics proxyMetrics, BackendCircuitBreakerManager circuitBreakerManager, RateLimitManager rateLimitManager, UpstreamPoolManager upstreamPoolManager) {
         this.configuration = configuration;
         this.oauthManager = oauthManager;
         this.proxyMetrics = proxyMetrics;
         this.circuitBreakerManager = circuitBreakerManager;
         this.rateLimitManager = rateLimitManager;
+        this.upstreamPoolManager = upstreamPoolManager;
         this.sharedConnectionPool = new ConnectionPool(
                 configuration.getConnectionPoolSize(),
                 configuration.getConnectionPoolKeepAliveMinutes(),
@@ -583,12 +588,24 @@ public class HttpProxyManager {
                     }
                 }
 
-                Request req = this.httpRequestAdapter.getRequest(backendConfiguration, w, internalUid);
+                // Upstream Pool Selection
+                Optional<UpstreamMemberState> selectedMember = upstreamPoolManager.selectMember(backendname);
+                if (selectedMember.isEmpty()) {
+                    logger.warn("No healthy upstream members for backend [{}]", backendname);
+                    handler.status(503);
+                    handler.header("x-upstream-pool", backendname);
+                    handler.result("Service Unavailable — no healthy upstream for " + backendname);
+                    return;
+                }
+
+                String memberUrl = selectedMember.get().getUrl();
+                Request req = this.httpRequestAdapter.getRequest(backendConfiguration, memberUrl, w, internalUid);
 
                 // Injeta headers B3 de tracing na request para o backend
                 SpanWrapper requestSpan = tracerWrapper.createSpan("upstream-request");
                 requestSpan.getSpan().kind(brave.Span.Kind.CLIENT);
                 requestSpan.tag("upstream-client-name", backendname);
+                requestSpan.tag("upstream-member-url", memberUrl);
                 requestSpan.tag("upstream-req-url", req.url().uri().toASCIIString());
                 requestSpan.tag("upstream-req-method", handler.method().name());
 
@@ -761,8 +778,11 @@ public class HttpProxyManager {
             //
             // Aqui vai seguir fazendo o remaping
             //
+            // @deprecated — dead code, mantido para referência
+            String legacyUrl = backendConfiguration.getMembers().isEmpty()
+                    ? "http://localhost" : backendConfiguration.getMembers().get(0).getUrl();
             HttpRequest getRequest = HttpRequest.newBuilder()
-                    .uri(URI.create(backendConfiguration.getEndPointUrl() + handler.contextPath()))
+                    .uri(URI.create(legacyUrl + handler.contextPath()))
                     .GET()
                     .build();
         }

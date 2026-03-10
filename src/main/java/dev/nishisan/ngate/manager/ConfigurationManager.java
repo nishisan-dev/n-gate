@@ -171,7 +171,8 @@ public class ConfigurationManager {
             BackendConfiguration defaultHttpBackend = new BackendConfiguration();
 
             defaultHttpBackend.setBackendName("http");
-            defaultHttpBackend.setEndPointUrl("http://keycloak:8080");
+            defaultHttpBackend.getMembers().add(
+                    new dev.nishisan.ngate.configuration.UpstreamMemberConfiguration("http://keycloak:8080"));
 
             OauthServerClientConfiguration configuration
                     = new OauthServerClientConfiguration(

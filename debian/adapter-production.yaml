@@ -25,8 +25,8 @@ endpoints:
     backends:
       backend-1:
         backendName: "backend-1"
-        xOriginalHost: null
-        endPointUrl: "http://localhost:8080"
+        members:
+          - url: "http://localhost:8080"
 
     ruleMapping: "default/Rules.groovy"
     ruleMappingThreads: 1

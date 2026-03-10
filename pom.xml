@@ -299,6 +299,14 @@
             <version>4.2.2</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- OkHttp MockWebServer: servidor HTTP mock para testes -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>

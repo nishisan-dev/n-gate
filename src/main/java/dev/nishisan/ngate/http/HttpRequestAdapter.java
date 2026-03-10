@@ -34,7 +34,7 @@ public class HttpRequestAdapter {
 
     private final Logger logger = LogManager.getLogger(HttpRequestAdapter.class);
 
-    public Request getRequest(BackendConfiguration backeEndConfiguration, HttpWorkLoad workload, String reqUID) {
+    public Request getRequest(BackendConfiguration backeEndConfiguration, String memberUrl, HttpWorkLoad workload, String reqUID) {
         Long start = System.currentTimeMillis();
         Request.Builder builder = new Request.Builder();
         RequestBody requestBody = null;
@@ -125,7 +125,7 @@ public class HttpRequestAdapter {
         //
         // Seta a URL do Destino
         //
-        String url = backeEndConfiguration.getEndPointUrl();
+        String url = memberUrl;
         url += request.getRequestURI();
         if (request.getQueryString() != null) {
             url += "?" + request.getQueryString();
