@@ -323,3 +323,34 @@ As métricas do circuit breaker são registradas automaticamente no Micrometer v
 | `resilience4j.circuitbreaker.failure.rate` | Gauge | Taxa de falha atual (%) |
 
 Para configuração detalhada, veja [docs/configuration.md](configuration.md#circuit-breaker).
+
+---
+
+## Rate Limiting
+
+O n-gate implementa rate limiting granular em 3 escopos (listener, rota, backend), controlado via bloco `rateLimiting:` no `adapter.yaml`.
+
+### Modos
+
+| Modo | Comportamento | Resposta |
+|------|---------------|----------|
+| **nowait** | Rejeita imediatamente | HTTP 429 + `x-rate-limit: REJECTED` |
+| **stall** | Aguarda slot (bloqueia virtual thread) | HTTP 429 se timeout expirar |
+
+### Headers de Resposta
+
+| Header | Quando | Descrição |
+|--------|--------|-----------|
+| `x-rate-limit` | Sempre que rate limit atua | `REJECTED` ou `DELAYED` |
+| `x-rate-limit-zone` | Rate limit ativado | Nome da zona |
+| `x-rate-limit-scope` | Rate limit ativado | `route` ou `backend` |
+| `Retry-After` | HTTP 429 | Timeout da zona (segundos) |
+
+### Métricas
+
+| Métrica | Tipo | Tags | Descrição |
+|---------|------|------|-----------|
+| `ngate.ratelimit.total` | Counter | scope, zone, result | Eventos de rate limiting (ALLOWED/REJECTED/DELAYED) |
+| `ngate.ratelimit.available_permits` | Gauge | key | Permits disponíveis por rate limiter |
+
+Para configuração detalhada, veja [docs/rate-limiting.md](rate-limiting.md) e [docs/configuration.md](configuration.md#rate-limiting).

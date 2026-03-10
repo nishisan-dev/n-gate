@@ -10,6 +10,7 @@ O n-gate é um API Gateway/Reverse Proxy construído sobre uma stack de alta per
 - **Brave/Zipkin** para observabilidade distribuída
 - **NGrid** (nishi-utils) para cluster mode com mesh TCP, leader election e DistributedMap
 - **Resilience4j** para circuit breaker por backend
+- **Rate Limiting** engine baseada em Semaphore com modos stall/nowait
 - **Micrometer** para métricas Prometheus via Spring Boot Actuator
 - **Spring Boot 3.5** para gerenciamento de configuração e ciclo de vida
 
@@ -36,8 +37,9 @@ O gateway recebe requests HTTP, os processa através de um pipeline configuráve
 - **Responsabilidade:** Registra rotas HTTP no Javalin para cada listener configurado. Para cada request:
   1. Cria um root span de tracing (com extração B3)
   2. Adiciona tags HTTP semânticas
-  3. Verifica autenticação (se `secured: true`)
-  4. Delega ao `HttpProxyManager`
+  3. Aplica rate limiting inbound (listener + rota)
+  4. Verifica autenticação (se `secured: true`)
+  5. Delega ao `HttpProxyManager`
 
 ### 3. HttpProxyManager
 
@@ -45,8 +47,9 @@ O gateway recebe requests HTTP, os processa através de um pipeline configuráve
 - **Responsabilidade:** Core do proxy. Gerencia o ciclo completo de um request:
   1. Avalia regras Groovy (`evalDynamicRules`)
   2. Resolve o backend de destino
-  3. Monta e executa o request upstream via OkHttp
-  4. Processa a resposta via `HttpResponseAdapter`
+  3. Aplica rate limiting outbound (backend)
+  4. Monta e executa o request upstream via OkHttp
+  5. Processa a resposta via `HttpResponseAdapter`
 
 ### 4. HttpWorkLoad
 
@@ -90,6 +93,16 @@ O gateway recebe requests HTTP, os processa através de um pipeline configuráve
 - **Classe:** `dev.nishisan.ngate.observabitliy.service.TracerService`
 - **Responsabilidade:** Gerencia instâncias de `Tracing` e `Tracer` (Brave). Cada listener tem seu próprio service name. O sender usa OkHttp para enviar spans ao Zipkin.
 
+### 9. RateLimitManager
+
+- **Classe:** `dev.nishisan.ngate.http.ratelimit.RateLimitManager`
+- **Responsabilidade:** Engine de rate limiting baseada em `java.util.concurrent.Semaphore` com reset periódico:
+  - Zonas nomeadas com N permits, resetadas por `ScheduledExecutorService`
+  - **Modo nowait:** `tryAcquire()` sem timeout — rejeita imediatamente
+  - **Modo stall:** `tryAcquire(timeout)` — bloqueia virtual thread
+  - Métricas gauge via Micrometer (`ngate.ratelimit.available_permits`)
+  - Configuração via bloco `rateLimiting:` do `adapter.yaml`
+
 ---
 
 ## Fluxo de um Request
@@ -101,18 +114,20 @@ O gateway recebe requests HTTP, os processa através de um pipeline configuráve
 1. **Recepção** — Javalin recebe o request no listener configurado (porta 9090, 9091, etc.)
 2. **Root Span** — `EndpointWrapper` cria o span raiz com extração B3 (se headers presentes)
 3. **Tags Semânticas** — Método HTTP, URL, IP do cliente, User-Agent, etc.
-4. **Autenticação** (opcional) — Se `secured: true`, o `TokenDecoder` valida o JWT do header `Authorization`
-5. **Regras Groovy** — `HttpProxyManager.evalDynamicRules()` executa os scripts do diretório `rules/`
-6. **Resolução de Backend** — Backend definido pela regra ou pelo `defaultBackend` do listener
-7. **Request Upstream** — OkHttp monta e executa o request, com:
+4. **Rate Limit Inbound** — Verifica rate limiting no escopo listener e rota (HTTP 429 se rejeitado)
+5. **Autenticação** (opcional) — Se `secured: true`, o `TokenDecoder` valida o JWT do header `Authorization`
+6. **Regras Groovy** — `HttpProxyManager.evalDynamicRules()` executa os scripts do diretório `rules/`
+7. **Resolução de Backend** — Backend definido pela regra ou pelo `defaultBackend` do listener
+8. **Rate Limit Outbound** — Verifica rate limiting no escopo backend (HTTP 429 se rejeitado)
+9. **Request Upstream** — OkHttp monta e executa o request, com:
    - Injeção de headers B3 (tracing)
    - Injeção de `Authorization: Bearer` (se backend tem OAuth config)
-8. **Response Adapter** — `HttpResponseAdapter.writeResponse()` converte a resposta:
-   - Executa response processors (closures Groovy)
-   - Copia headers e status
-   - Faz streaming (`returnPipe`) ou materialização
-9. **Resposta ao Cliente** — Status, headers e body enviados. Header `x-trace-id` adicionado.
-10. **Root Span Finalizado** — Tag `http.status_code` adicionada, span fechado.
+10. **Response Adapter** — `HttpResponseAdapter.writeResponse()` converte a resposta:
+    - Executa response processors (closures Groovy)
+    - Copia headers e status
+    - Faz streaming (`returnPipe`) ou materialização
+11. **Resposta ao Cliente** — Status, headers e body enviados. Header `x-trace-id` adicionado.
+12. **Root Span Finalizado** — Tag `http.status_code` adicionada, span fechado.
 
 ---
 
@@ -197,6 +212,7 @@ workload.returnPipe = false  // materializa para permitir inspeção
 | `dev.nishisan.ngate.groovy` | `ProtectedBinding` — binding seguro para Groovy |
 | `dev.nishisan.ngate.http` | Core: proxy, workload, adapters, context wrapper |
 | `dev.nishisan.ngate.http.circuit` | `BackendCircuitBreakerManager` (Resilience4j) |
+| `dev.nishisan.ngate.http.ratelimit` | `RateLimitManager`, `RateLimitResult` — engine de rate limiting |
 | `dev.nishisan.ngate.http.clients` | Utilitários de HTTP client |
 | `dev.nishisan.ngate.http.synth` | Respostas HTTP sintéticas |
 | `dev.nishisan.ngate.manager` | Gerenciadores de configuração e endpoints |
@@ -273,6 +289,8 @@ O `ProxyMetrics` instrumenta o hot path com counters e timers Micrometer:
 | `ngate.upstream.requests` | Counter | backend, method, status | Total de requests upstream |
 | `ngate.upstream.duration` | Timer | backend, method | Latência upstream (ms) |
 | `ngate.upstream.errors` | Counter | backend, method | Erros upstream |
+| `ngate.ratelimit.total` | Counter | scope, zone, result | Eventos de rate limiting (ALLOWED/REJECTED/DELAYED) |
+| `ngate.ratelimit.available_permits` | Gauge | key | Permits disponíveis por rate limiter |
 | `ngate.cluster.active.members` | Gauge | — | Membros ativos no cluster |
 | `ngate.cluster.is.leader` | Gauge | — | 1=leader, 0=follower |
 

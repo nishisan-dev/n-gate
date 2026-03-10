@@ -1,6 +1,6 @@
 # n-gate
 
-> API Gateway & Reverse Proxy de alta performance com motor de regras dinâmicas Groovy, cluster mode (NGrid), circuit breaker, observabilidade integrada (Zipkin + Prometheus) e autenticação OAuth2/JWT — construído em Java 21.
+> API Gateway & Reverse Proxy de alta performance com motor de regras dinâmicas Groovy, cluster mode (NGrid), circuit breaker, rate limiting, observabilidade integrada (Zipkin + Prometheus) e autenticação OAuth2/JWT — construído em Java 21.
 
 [![Java 21](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
@@ -39,6 +39,7 @@ O **n-gate** é um gateway HTTP programável que atua como proxy reverso entre s
 | **Token Sharing** | Tokens OAuth2 compartilhados via POW-RBL (Publish-on-write + Read-before-login) |
 | **Rules Deploy** | Deploy atômico de scripts Groovy via Admin API (`POST /admin/rules/deploy`) com replicação cluster |
 | **Circuit Breaker** | Resilience4j por backend — CLOSED/OPEN/HALF_OPEN com métricas Micrometer |
+| **Rate Limiting** | Controle de taxa por listener, rota e backend com modos `stall` (delay) e `nowait` (429 imediato) |
 | **Métricas Prometheus** | Counters/timers inbound e upstream via `/actuator/prometheus` |
 | **Health Check** | Spring Boot Actuator com status de cluster, circuit breaker e instance ID |
 
@@ -235,6 +236,7 @@ O script faz warmup, roda testes com concorrência 1/10/50, e gera relatório co
 | [Segurança](docs/security.md) | JWT, OAuth2, políticas de autenticação |
 | [Casos de Uso](docs/use_cases.md) | Cenários end-to-end com configuração e comandos |
 | [Observabilidade](docs/observability.md) | Spans, tracing, métricas Prometheus, circuit breaker |
+| [Rate Limiting](docs/rate-limiting.md) | Modos stall/nowait, zonas, configuração por escopo, métricas |
 | [Testes de Cluster](docs/cluster_integration_tests.md) | Testes de integração Docker do cluster NGrid |
 
 ---
@@ -291,7 +293,8 @@ n-gate/
 │   ├── configuration/         # POJOs de configuração (adapter.yaml)
 │   ├── groovy/                # Bindings protegidos para Groovy
 │   ├── http/                  # Core: proxy, workload, adapters
-│   │   └── circuit/           # BackendCircuitBreakerManager
+│   │   ├── circuit/           # BackendCircuitBreakerManager
+│   │   └── ratelimit/         # RateLimitManager, RateLimitResult
 │   ├── manager/               # Gerenciadores de config e endpoints
 │   └── observabitliy/         # TracerService, SpanWrapper, ProxyMetrics
 ├── ssl/                       # Keystores SSL
