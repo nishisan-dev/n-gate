@@ -18,7 +18,7 @@ O n-gate utiliza o **GroovyScriptEngine** como motor de regras dinâmicas. Scrip
 | Variável | Tipo | Descrição |
 |----------|------|-----------|
 | `workload` | `HttpWorkLoad` | Objeto principal — carrega request, response e configuração do pipeline |
-| `context` | `CustomContextWrapper` | Wrapper do contexto Javalin (acesso a headers, params, body) |
+| `context` | `CustomContextWrapper` | Wrapper do contexto Javalin — **somente leitura** (headers, params, body, path, IP) |
 | `upstreamRequest` | `HttpAdapterServletRequest` | Request que será enviado ao backend (modificável) |
 | `utils` | `Map<String, Object>` | Utilitários: `gson`, `json`, `xml`, `httpClient` |
 | `listener` | `String` | Nome do listener que recebeu o request |
@@ -73,27 +73,32 @@ O `upstreamRequest` permite modificar o request antes de enviá-lo ao backend:
 
 ---
 
-## API do CustomContextWrapper (Response)
+## API do CustomContextWrapper (Leitura)
 
-O `context` também permite manipular a resposta diretamente para o cliente:
+O `context` é um wrapper sobre o Javalin Context. Deve ser utilizado **exclusivamente para leitura** de dados do request do cliente:
 
 | Método | Descrição |
 |--------|-----------|
-| `header(name, value)` | Define um header no response ao cliente |
-| `removeHeader(name)` | Remove um header do response |
-| `status(code)` | Define o status HTTP do response (int ou `HttpStatus`) |
-| `contentType(type)` | Define o `Content-Type` do response |
-| `result(string)` | Define o body do response como string |
-| `result(bytes)` | Define o body do response como byte array |
-| `json(obj)` | Serializa objeto como JSON e define no response |
-| `html(html)` | Define o body como HTML |
-| `redirect(url)` | Redireciona o cliente para outra URL |
-| `redirect(url, status)` | Redireciona com status HTTP específico |
-| `cookie(name, value)` | Define um cookie no response |
-| `cookie(name, value, maxAge)` | Define um cookie com tempo de expiração |
-| `removeCookie(name)` | Remove um cookie |
+| `path()` | Retorna o path do request |
+| `header(name)` | Retorna o valor de um header do request |
+| `headerMap()` | Retorna todos os headers como `Map<String, String>` |
+| `queryParam(key)` | Retorna um query parameter |
+| `queryString()` | Retorna a query string completa |
+| `pathParam(key)` | Retorna um path parameter |
+| `body()` | Retorna o body do request como string |
+| `bodyAsBytes()` | Retorna o body como `byte[]` |
+| `method()` | Retorna o método HTTP (`GET`, `POST`, etc.) |
+| `ip()` | Retorna o IP do cliente |
+| `scheme()` | Retorna o scheme (`http`/`https`) |
+| `host()` | Retorna o host |
+| `fullUrl()` | Retorna a URL completa |
+| `cookie(name)` | Retorna o valor de um cookie do request |
+| `contentType()` | Retorna o `Content-Type` do request |
 | `raiseException()` | Lança exceção genérica (aborta o request) |
 | `raiseException(msg)` | Lança exceção com mensagem customizada |
+
+> [!WARNING]
+> **Não use `context` para escrita no response** (ex: `context.header(name, value)`, `context.result()`, `context.cookie(name, value)`, `context.redirect()`). O `context` é um wrapper sobre o Javalin Context e operações de escrita podem não sobreviver ao pipeline de proxy. Para manipular o response, use `workload.createSynthResponse()` ou `wl.clientResponse.addHeader()` dentro de Response Processors.
 
 ---
 
@@ -365,28 +370,30 @@ upstreamRequest.setQueryString(existingQs + "&source=n-gate")
 
 ---
 
-### 9. Manipulação de Cookies
+### 9. Manipulação de Cookies via Response Processor
 
-Define e remove cookies no response ao cliente:
+Define cookies no response ao cliente dentro de um Response Processor:
 
 ```groovy
 // rules/default/Rules.groovy
 
-// Define cookie de sessão
-context.cookie("SESSION_ID", java.util.UUID.randomUUID().toString(), 3600)
+def setCookies = { wl ->
+    // Define cookie de sessão
+    wl.clientResponse.addHeader("Set-Cookie",
+        "SESSION_ID=" + java.util.UUID.randomUUID().toString() + "; Max-Age=3600; Path=/; HttpOnly")
 
-// Cookie para tracking de versão
-context.cookie("app-version", "2.1.1")
+    // Cookie para tracking de versão
+    wl.clientResponse.addHeader("Set-Cookie", "app-version=2.1.1; Path=/")
+}
 
-// Remove cookie legado
-context.removeCookie("old-session")
+workload.addResponseProcessor('setCookies', setCookies)
 ```
 
 ---
 
 ### 10. Redirecionamento Condicional
 
-Redireciona o cliente com base em condições de roteamento:
+Redireciona o cliente com base em condições de roteamento, usando resposta sintética:
 
 ```groovy
 // rules/default/Rules.groovy
@@ -396,13 +403,21 @@ def path = context.path()
 // Redireciona versões antigas da API
 if (path.startsWith("/api/v1/")) {
     def newPath = path.replace("/api/v1/", "/api/v2/")
-    context.redirect("https://api.example.com" + newPath, io.javalin.http.HttpStatus.MOVED_PERMANENTLY)
+    def synth = workload.createSynthResponse()
+    synth.setStatus(301)
+    synth.addHeader("Location", "https://api.example.com" + newPath)
+    synth.setContent('{"message": "Moved Permanently"}')
+    synth.addHeader("Content-Type", "application/json")
     return
 }
 
 // Redireciona para HTTPS se veio por HTTP
 if (context.scheme() == "http" && context.header("X-Forwarded-Proto") != "https") {
-    context.redirect("https://" + context.host() + context.fullUrl())
+    def synth = workload.createSynthResponse()
+    synth.setStatus(301)
+    synth.addHeader("Location", "https://" + context.host() + context.fullUrl())
+    synth.setContent('{"message": "Redirecting to HTTPS"}')
+    synth.addHeader("Content-Type", "application/json")
     return
 }
 ```
@@ -488,5 +503,6 @@ workload.addResponseProcessor('transformBody', transformBody)
 4. **Recompilação** — Scripts são recompilados automaticamente a cada 60 segundos. Para testar mudanças, aguarde o intervalo ou reinicie o gateway.
 5. **Isolamento** — Use `ProtectedBinding` (automático) para evitar vazamento de estado entre requests concorrentes.
 6. **Encadeamento** — Use `include` para modularizar regras complexas em múltiplos scripts.
-7. **Headers no response** — Para headers estáticos, use `context.header()` direto no script. Para headers que dependem da resposta do backend, use Response Processors com `wl.clientResponse.addHeader()`.
-8. **Abort com resposta customizada** — Prefira `createSynthResponse()` com status/body explícitos em vez de `raiseException()`, para retornar mensagens de erro estruturadas ao cliente.
+7. **`context` é somente leitura** — Use `context` apenas para ler dados do request (path, headers, params, IP). Para qualquer manipulação do response, use `workload.createSynthResponse()` ou `wl.clientResponse.addHeader()` em Response Processors.
+8. **Headers no response** — Use exclusivamente Response Processors com `wl.clientResponse.addHeader()`. Essa é a abordagem validada e funcional em todos os modos (streaming, materializado, sintético).
+9. **Abort com resposta customizada** — Prefira `createSynthResponse()` com status/body explícitos em vez de `raiseException()`, para retornar mensagens de erro estruturadas ao cliente.
