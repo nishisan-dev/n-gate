@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ngate-cli — CLI para gerenciamento de rules do n-gate
+# ==============================================================================
+set -euo pipefail
+
+VERSION="1.0.0"
+PROG_NAME="$(basename "$0")"
+
+# ─── Configuração ─────────────────────────────────────────────────────────────
+# Pode ser sobrescrito por /etc/n-gate/cli.conf ou variáveis de ambiente.
+NGATE_ADMIN_URL="${NGATE_ADMIN_URL:-http://localhost:9190}"
+NGATE_API_KEY="${NGATE_API_KEY:-}"
+
+CLI_CONF="/etc/n-gate/cli.conf"
+if [[ -f "$CLI_CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$CLI_CONF"
+fi
+
+# ─── Cores ────────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+die() {
+    echo -e "${RED}ERROR:${NC} $*" >&2
+    exit 1
+}
+
+info() {
+    echo -e "${CYAN}➜${NC} $*"
+}
+
+success() {
+    echo -e "${GREEN}✔${NC} $*"
+}
+
+warn() {
+    echo -e "${YELLOW}⚠${NC} $*"
+}
+
+check_deps() {
+    for cmd in curl jq; do
+        command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' is required but not installed."
+    done
+}
+
+check_api_key() {
+    if [[ -z "$NGATE_API_KEY" ]]; then
+        die "API key not set. Use NGATE_API_KEY env variable or configure it in $CLI_CONF"
+    fi
+}
+
+api_get() {
+    local path="$1"
+    local url="${NGATE_ADMIN_URL}/admin/rules${path}"
+    local http_code body
+
+    body=$(curl -sS -w "\n%{http_code}" \
+        -H "X-API-Key: ${NGATE_API_KEY}" \
+        -H "Accept: application/json" \
+        "$url" 2>&1) || die "Failed to connect to ${url}"
+
+    http_code=$(echo "$body" | tail -n1)
+    body=$(echo "$body" | sed '$d')
+
+    if [[ "$http_code" -ge 400 ]]; then
+        local error_msg
+        error_msg=$(echo "$body" | jq -r '.error // .message // "Unknown error"' 2>/dev/null || echo "$body")
+        die "API returned HTTP ${http_code}: ${error_msg}"
+    fi
+
+    echo "$body"
+}
+
+# ─── Comandos ─────────────────────────────────────────────────────────────────
+
+cmd_deploy() {
+    local rules_dir="${1:-}"
+
+    if [[ -z "$rules_dir" ]]; then
+        die "Usage: $PROG_NAME deploy <rules-directory>"
+    fi
+
+    if [[ ! -d "$rules_dir" ]]; then
+        die "Directory not found: $rules_dir"
+    fi
+
+    check_api_key
+
+    # Encontrar todos os .groovy
+    local -a groovy_files
+    mapfile -t groovy_files < <(find "$rules_dir" -type f -name '*.groovy' | sort)
+
+    if [[ ${#groovy_files[@]} -eq 0 ]]; then
+        die "No .groovy files found in: $rules_dir"
+    fi
+
+    info "Found ${#groovy_files[@]} Groovy script(s) in '${rules_dir}':"
+    for f in "${groovy_files[@]}"; do
+        local rel_path
+        rel_path=$(realpath --relative-to="$rules_dir" "$f")
+        local size
+        size=$(stat -c%s "$f")
+        echo "   • ${rel_path} (${size} bytes)"
+    done
+
+    # Montar multipart via curl
+    local -a curl_args
+    curl_args=(
+        -sS
+        -X POST
+        -H "X-API-Key: ${NGATE_API_KEY}"
+        -H "Accept: application/json"
+    )
+
+    for f in "${groovy_files[@]}"; do
+        local rel_path
+        rel_path=$(realpath --relative-to="$rules_dir" "$f")
+        curl_args+=(-F "scripts=@${f};filename=${rel_path}")
+    done
+
+    local url="${NGATE_ADMIN_URL}/admin/rules/deploy"
+    info "Deploying to ${url} ..."
+
+    local body http_code
+    body=$(curl "${curl_args[@]}" -w "\n%{http_code}" "$url" 2>&1) || die "Failed to connect to ${url}"
+
+    http_code=$(echo "$body" | tail -n1)
+    body=$(echo "$body" | sed '$d')
+
+    if [[ "$http_code" -ge 400 ]]; then
+        local error_msg
+        error_msg=$(echo "$body" | jq -r '.error // .message // "Unknown error"' 2>/dev/null || echo "$body")
+        die "Deploy failed (HTTP ${http_code}): ${error_msg}"
+    fi
+
+    local version deployed_at script_count
+    version=$(echo "$body" | jq -r '.version // "?"')
+    deployed_at=$(echo "$body" | jq -r '.deployedAt // "?"')
+    script_count=$(echo "$body" | jq -r '.scriptCount // "?"')
+
+    echo ""
+    success "Deploy successful!"
+    echo -e "   ${BOLD}Version:${NC}     ${version}"
+    echo -e "   ${BOLD}Deployed At:${NC} ${deployed_at}"
+    echo -e "   ${BOLD}Scripts:${NC}     ${script_count}"
+}
+
+cmd_list() {
+    check_api_key
+    info "Fetching rules list from ${NGATE_ADMIN_URL} ..."
+
+    local body
+    body=$(api_get "/list")
+
+    local status
+    status=$(echo "$body" | jq -r '.status // "unknown"')
+
+    if [[ "$status" == "no-bundle" ]]; then
+        warn "No rules bundle deployed — using default rules/ directory."
+        return 0
+    fi
+
+    local version deployed_at deployed_by script_count
+    version=$(echo "$body" | jq -r '.version // "?"')
+    deployed_at=$(echo "$body" | jq -r '.deployedAt // "?"')
+    deployed_by=$(echo "$body" | jq -r '.deployedBy // "?"')
+    script_count=$(echo "$body" | jq -r '.scriptCount // "?"')
+
+    echo ""
+    echo -e "${BOLD}Active Rules Bundle${NC}"
+    echo -e "   ${BOLD}Version:${NC}     ${version}"
+    echo -e "   ${BOLD}Deployed At:${NC} ${deployed_at}"
+    echo -e "   ${BOLD}Deployed By:${NC} ${deployed_by}"
+    echo -e "   ${BOLD}Scripts:${NC}     ${script_count}"
+    echo ""
+
+    echo -e "${BOLD}Scripts:${NC}"
+    echo "$body" | jq -r '.scripts[] | "   • \(.name) (\(.sizeBytes) bytes)"' 2>/dev/null || true
+}
+
+cmd_version() {
+    check_api_key
+    info "Fetching active version from ${NGATE_ADMIN_URL} ..."
+
+    local body
+    body=$(api_get "/version")
+
+    local status
+    status=$(echo "$body" | jq -r '.status // "unknown"')
+
+    if [[ "$status" == "no-bundle" ]]; then
+        warn "No rules bundle deployed — using default rules/ directory."
+        return 0
+    fi
+
+    local version deployed_at deployed_by script_count
+    version=$(echo "$body" | jq -r '.version // "?"')
+    deployed_at=$(echo "$body" | jq -r '.deployedAt // "?"')
+    deployed_by=$(echo "$body" | jq -r '.deployedBy // "?"')
+    script_count=$(echo "$body" | jq -r '.scriptCount // "?"')
+
+    echo ""
+    echo -e "${BOLD}Active Rules Bundle${NC}"
+    echo -e "   ${BOLD}Version:${NC}     ${version}"
+    echo -e "   ${BOLD}Deployed At:${NC} ${deployed_at}"
+    echo -e "   ${BOLD}Deployed By:${NC} ${deployed_by}"
+    echo -e "   ${BOLD}Scripts:${NC}     ${script_count}"
+}
+
+cmd_help() {
+    cat <<EOF
+${BOLD}ngate-cli${NC} v${VERSION} — n-gate Rules Management CLI
+
+${BOLD}USAGE:${NC}
+    $PROG_NAME <command> [arguments]
+
+${BOLD}COMMANDS:${NC}
+    deploy <dir>    Deploy Groovy rules from a directory
+    list            List scripts in the active rules bundle
+    version         Show the active rules bundle version
+    help            Show this help message
+
+${BOLD}CONFIGURATION:${NC}
+    Environment variables or /etc/n-gate/cli.conf:
+
+    NGATE_ADMIN_URL   Admin API base URL (default: http://localhost:9190)
+    NGATE_API_KEY     API key for authentication (required)
+
+${BOLD}EXAMPLES:${NC}
+    # Deploy rules from a local directory
+    $PROG_NAME deploy /etc/n-gate/rules
+
+    # List active rules
+    $PROG_NAME list
+
+    # Check active version
+    $PROG_NAME version
+
+    # Use with explicit config
+    NGATE_API_KEY=my-key NGATE_ADMIN_URL=http://ngate:9190 $PROG_NAME list
+EOF
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+check_deps
+
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+    deploy)  cmd_deploy "$@" ;;
+    list)    cmd_list "$@" ;;
+    version) cmd_version "$@" ;;
+    help|--help|-h) cmd_help ;;
+    *)       die "Unknown command: $COMMAND. Run '$PROG_NAME help' for usage." ;;
+esac

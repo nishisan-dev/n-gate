@@ -16,8 +16,8 @@ RestartSec=10
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/log/n-gate
-ReadOnlyPaths=/etc/n-gate /opt/n-gate
+ReadWritePaths=/var/log/n-gate /etc/n-gate/rules
+ReadOnlyPaths=/etc/n-gate/adapter.yaml /etc/n-gate/ssl /opt/n-gate
 
 [Install]
 WantedBy=multi-user.target

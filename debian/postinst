@@ -9,10 +9,12 @@ fi
 # Cria diretórios de runtime
 mkdir -p /var/log/n-gate
 mkdir -p /etc/n-gate/ssl
+mkdir -p /etc/n-gate/rules
 
 # Ajusta permissões
 chown -R n-gate:n-gate /var/log/n-gate
 chown -R n-gate:n-gate /etc/n-gate/ssl
+chown -R n-gate:n-gate /etc/n-gate/rules
 
 # Habilita o serviço (não inicia automaticamente)
 systemctl daemon-reload

@@ -179,6 +179,43 @@ public class AdminController {
     }
 
     /**
+     * Lista os scripts do bundle ativo com detalhes (nome e tamanho).
+     */
+    @GetMapping("/list")
+    public ResponseEntity<?> list(HttpServletRequest request) {
+        // Validar autenticação
+        ResponseEntity<?> authError = validateApiKey(request);
+        if (authError != null) {
+            return authError;
+        }
+
+        RulesBundle active = rulesBundleManager.getActiveBundle();
+        if (active == null) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "no-bundle",
+                    "message", "No rules bundle deployed — using default rules/ directory",
+                    "scripts", java.util.List.of()
+            ));
+        }
+
+        var scriptDetails = active.scripts().entrySet().stream()
+                .map(e -> Map.of(
+                        "name", e.getKey(),
+                        "sizeBytes", e.getValue().length
+                ))
+                .toList();
+
+        return ResponseEntity.ok(Map.of(
+                "status", "active",
+                "version", active.version(),
+                "deployedAt", active.deployedAt().toString(),
+                "deployedBy", active.deployedBy(),
+                "scriptCount", active.scripts().size(),
+                "scripts", scriptDetails
+        ));
+    }
+
+    /**
      * Valida o header X-API-Key contra a configuração do admin.
      *
      * @return ResponseEntity com erro se inválido, null se OK

@@ -74,6 +74,11 @@ jobs:
           cp debian/n-gate.service "${PKG}/lib/systemd/system/"
           cp debian/n-gate.logrotate "${PKG}/etc/logrotate.d/n-gate"
 
+          # CLI tool
+          mkdir -p "${PKG}/usr/bin"
+          cp debian/ngate-cli "${PKG}/usr/bin/ngate-cli"
+          chmod 755 "${PKG}/usr/bin/ngate-cli"
+
           # Control files
           sed "s/^Version:.*/Version: ${VERSION}/" debian/control > "${PKG}/DEBIAN/control"
           cp debian/conffiles "${PKG}/DEBIAN/"
