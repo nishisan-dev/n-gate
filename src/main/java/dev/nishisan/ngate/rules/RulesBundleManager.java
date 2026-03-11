@@ -35,8 +35,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -209,31 +212,41 @@ public class RulesBundleManager {
      */
     private void applyBundleLocally(RulesBundle bundle) {
         try {
-            // 1. Materializar scripts em diretório temporário
-            Path tempDir = Files.createTempDirectory("ngate-rules-v" + bundle.version() + "-");
+            // 1. Resolver rulesBasePath configurado
+            Path rulesDir = resolveRulesBasePath();
+            logger.info("Materializing rules bundle v{} to rulesBasePath [{}]", bundle.version(), rulesDir);
+
+            // 2. Limpar diretório existente (remover scripts antigos)
+            if (Files.exists(rulesDir)) {
+                cleanDirectory(rulesDir);
+            }
+            Files.createDirectories(rulesDir);
+
+            // 3. Materializar scripts do bundle no rulesBasePath
             for (Map.Entry<String, byte[]> entry : bundle.scripts().entrySet()) {
-                Path scriptPath = tempDir.resolve(entry.getKey());
+                Path scriptPath = rulesDir.resolve(entry.getKey());
                 Files.createDirectories(scriptPath.getParent());
                 Files.write(scriptPath, entry.getValue());
                 logger.debug("Materialized script: [{}] ({} bytes)", entry.getKey(), entry.getValue().length);
             }
 
-            // 2. Criar novo GroovyScriptEngine
-            GroovyScriptEngine newGse = new GroovyScriptEngine(tempDir.toAbsolutePath().toString());
+            // 4. Criar novo GroovyScriptEngine apontando para o rulesBasePath
+            GroovyScriptEngine newGse = new GroovyScriptEngine(rulesDir.toAbsolutePath().toString());
             CompilerConfiguration config = newGse.getConfig();
             config.setRecompileGroovySource(false); // Sem recompilação — bundle é estático até próximo deploy
-            logger.info("New GroovyScriptEngine created from [{}]", tempDir);
+            logger.info("New GroovyScriptEngine created from rulesBasePath [{}]", rulesDir);
 
-            // 3. Swap atômico em todos os wrappers ativos
+            // 5. Swap atômico em todos os wrappers ativos
             for (EndpointWrapper wrapper : endpointManager.getActiveWrappers()) {
                 wrapper.swapGroovyEngine(newGse);
             }
 
-            // 4. Atualizar referência do bundle ativo
+            // 6. Atualizar referência do bundle ativo
             activeBundle.set(bundle);
             versionCounter.set(Math.max(versionCounter.get(), bundle.version()));
 
-            logger.info("Rules bundle v{} applied successfully — {} script(s)", bundle.version(), bundle.scripts().size());
+            logger.info("Rules bundle v{} applied successfully — {} script(s) materialized in [{}]",
+                    bundle.version(), bundle.scripts().size(), rulesDir);
         } catch (Exception ex) {
             logger.error("Failed to apply rules bundle v{}", bundle.version(), ex);
             throw new RuntimeException("Failed to apply rules bundle", ex);
@@ -276,6 +289,24 @@ public class RulesBundleManager {
         }
     }
 
+    /**
+     * Resolve o rulesBasePath configurado no primeiro endpoint.
+     * Fallback: "rules" (diretório relativo ao working dir).
+     */
+    private Path resolveRulesBasePath() {
+        ConfigurationManager configurationManager = applicationContext.getBean(ConfigurationManager.class);
+        ServerConfiguration serverConfiguration = configurationManager.getServerConfiguration();
+        if (serverConfiguration != null && serverConfiguration.getEndpoints() != null) {
+            for (var entry : serverConfiguration.getEndpoints().entrySet()) {
+                String basePath = entry.getValue().getRulesBasePath();
+                if (basePath != null && !basePath.isBlank()) {
+                    return Path.of(basePath);
+                }
+            }
+        }
+        return Path.of("rules");
+    }
+
     private Path resolvePersistPath() {
         ConfigurationManager configurationManager = applicationContext.getBean(ConfigurationManager.class);
         ServerConfiguration serverConfiguration = configurationManager.getServerConfiguration();
@@ -294,5 +325,26 @@ public class RulesBundleManager {
         }
 
         return Path.of("data", BUNDLE_PERSIST_FILE_NAME);
+    }
+
+    /**
+     * Remove todo o conteúdo de um diretório sem remover o diretório raiz.
+     */
+    private void cleanDirectory(Path dir) throws IOException {
+        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
+                if (!d.equals(dir)) {
+                    Files.delete(d);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 }
