@@ -296,15 +296,7 @@
         <dependency>
             <groupId>dev.nishisan</groupId>
             <artifactId>nishi-utils-spring</artifactId>
-            <version>1.0.2</version>
-            <exclusions>
-                <!-- nishi-utils-spring:1.0.2 depende de nishi-utils:1.0.5 (desatualizado).
-                     O n-gate já declara nishi-utils:3.2.0 diretamente. -->
-                <exclusion>
-                    <groupId>dev.nishisan</groupId>
-                    <artifactId>nishi-utils</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>1.0.3</version>
         </dependency>
 
         <!-- Micrometer Prometheus registry: /actuator/prometheus endpoint -->
