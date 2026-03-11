@@ -39,6 +39,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /**
@@ -83,6 +84,7 @@ public class EndpointManager {
 
     private final UpstreamHealthChecker healthChecker = new UpstreamHealthChecker();
 
+    @Order(30)
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         try {

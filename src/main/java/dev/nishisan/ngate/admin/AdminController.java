@@ -16,31 +16,41 @@
  */
 package dev.nishisan.ngate.admin;
 
+import dev.nishisan.ngate.cluster.ClusterService;
 import dev.nishisan.ngate.configuration.AdminApiConfiguration;
 import dev.nishisan.ngate.configuration.ServerConfiguration;
 import dev.nishisan.ngate.manager.ConfigurationManager;
 import dev.nishisan.ngate.rules.RulesBundle;
 import dev.nishisan.ngate.rules.RulesBundleManager;
+import dev.nishisan.utils.ngrid.common.NodeInfo;
 import jakarta.servlet.http.HttpServletRequest;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Admin API endpoints para deploy de rules e consulta de versão.
  * <p>
- * Roda na porta de management do Actuator (9190, Spring Boot / Undertow),
- * separada do tráfego de proxy (Javalin 9090/9091).
+ * Roda no servidor Spring Boot. Em alguns ambientes ele compartilha a mesma porta
+ * do management/Actuator; em outros, responde no {@code server.port}.
  * <p>
  * Autenticação via header {@code X-API-Key} validado contra
  * {@code admin.apiKey} do adapter.yaml.
@@ -59,6 +69,11 @@ public class AdminController {
 
     @Autowired
     private ConfigurationManager configurationManager;
+
+    @Autowired(required = false)
+    private ClusterService clusterService;
+
+    private final OkHttpClient httpClient = new OkHttpClient();
 
     /**
      * Trata erros de multipart (ex: request sem Content-Type multipart).
@@ -96,6 +111,11 @@ public class AdminController {
         }
 
         try {
+            ResponseEntity<?> forwarded = maybeForwardDeployToLeader(files, request);
+            if (forwarded != null) {
+                return forwarded;
+            }
+
             // 2. Montar mapa de scripts
             Map<String, byte[]> scripts = new HashMap<>();
             for (MultipartFile file : files) {
@@ -200,6 +220,86 @@ public class AdminController {
         ServerConfiguration serverConfig = configurationManager.getServerConfiguration();
         if (serverConfig != null) {
             return serverConfig.getAdmin();
+        }
+        return null;
+    }
+
+    private ResponseEntity<?> maybeForwardDeployToLeader(MultipartFile[] files, HttpServletRequest request) throws IOException {
+        if (clusterService == null || !clusterService.isClusterMode() || clusterService.isLeader()) {
+            return null;
+        }
+
+        Optional<NodeInfo> leaderInfo = clusterService.getNGridNode().coordinator().leaderInfo();
+        if (leaderInfo.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "error", "Cluster leader is not available",
+                    "timestamp", Instant.now().toString()
+            ));
+        }
+
+        String leaderHost = resolveLeaderHost(leaderInfo.get());
+        if (leaderHost == null || leaderHost.isBlank()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "error", "Unable to resolve leader host",
+                    "timestamp", Instant.now().toString()
+            ));
+        }
+
+        URI forwardUri = URI.create(String.format("%s://%s:%d%s",
+                request.getScheme(),
+                leaderHost,
+                request.getLocalPort(),
+                request.getRequestURI()));
+
+        MultipartBody.Builder bodyBuilder = new MultipartBody.Builder().setType(MultipartBody.FORM);
+        for (MultipartFile file : files) {
+            String filename = file.getOriginalFilename();
+            if (filename == null || filename.isBlank()) {
+                filename = file.getName();
+            }
+            okhttp3.MediaType contentType = file.getContentType() != null
+                    ? okhttp3.MediaType.parse(file.getContentType())
+                    : okhttp3.MediaType.parse("text/plain");
+            bodyBuilder.addFormDataPart("scripts", filename,
+                    RequestBody.create(file.getBytes(), contentType));
+        }
+
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(forwardUri.toString())
+                .post(bodyBuilder.build());
+
+        String providedKey = request.getHeader("X-API-Key");
+        if (providedKey != null && !providedKey.isBlank()) {
+            requestBuilder.addHeader("X-API-Key", providedKey);
+        }
+
+        logger.info("Forwarding rules deploy to cluster leader [{}] via [{}]", leaderInfo.get().nodeId().value(), forwardUri);
+
+        try (Response response = httpClient.newCall(requestBuilder.build()).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
+            org.springframework.http.MediaType responseType = MediaType.APPLICATION_JSON;
+            String contentType = response.header("Content-Type");
+            if (contentType != null) {
+                try {
+                    responseType = MediaType.parseMediaType(contentType);
+                } catch (Exception ignored) {
+                    responseType = MediaType.APPLICATION_JSON;
+                }
+            }
+            return ResponseEntity.status(response.code())
+                    .contentType(responseType)
+                    .body(responseBody);
+        }
+    }
+
+    private String resolveLeaderHost(NodeInfo leaderInfo) {
+        if (leaderInfo.host() != null
+                && !leaderInfo.host().isBlank()
+                && !"0.0.0.0".equals(leaderInfo.host())) {
+            return leaderInfo.host();
+        }
+        if (leaderInfo.nodeId() != null) {
+            return leaderInfo.nodeId().value();
         }
         return null;
     }

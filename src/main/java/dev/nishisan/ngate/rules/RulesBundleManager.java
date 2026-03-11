@@ -17,8 +17,11 @@
 package dev.nishisan.ngate.rules;
 
 import dev.nishisan.ngate.cluster.ClusterService;
+import dev.nishisan.ngate.configuration.ClusterConfiguration;
+import dev.nishisan.ngate.configuration.ServerConfiguration;
 import dev.nishisan.ngate.http.EndpointWrapper;
 import dev.nishisan.ngate.manager.EndpointManager;
+import dev.nishisan.ngate.manager.ConfigurationManager;
 import dev.nishisan.utils.ngrid.structures.DistributedMap;
 import groovy.util.GroovyScriptEngine;
 import org.apache.logging.log4j.LogManager;
@@ -28,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -63,7 +67,7 @@ public class RulesBundleManager {
     private static final Logger logger = LogManager.getLogger(RulesBundleManager.class);
     private static final String RULES_MAP_NAME = "ngate-rules";
     private static final String RULES_MAP_KEY = "active-bundle";
-    private static final String BUNDLE_PERSIST_FILE = "data/rules-bundle.dat";
+    private static final String BUNDLE_PERSIST_FILE_NAME = "rules-bundle.dat";
     private static final long CLUSTER_POLL_INTERVAL_SECONDS = 5;
 
     @Autowired
@@ -77,6 +81,7 @@ public class RulesBundleManager {
     private ClusterService clusterService;
     private ScheduledExecutorService clusterPollExecutor;
 
+    @Order(40)
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         this.endpointManager = applicationContext.getBean(EndpointManager.class);
@@ -240,7 +245,7 @@ public class RulesBundleManager {
      */
     private void persistToDisk(RulesBundle bundle) {
         try {
-            Path persistPath = Path.of(BUNDLE_PERSIST_FILE);
+            Path persistPath = resolvePersistPath();
             Files.createDirectories(persistPath.getParent());
             try (ObjectOutputStream oos = new ObjectOutputStream(
                     new FileOutputStream(persistPath.toFile()))) {
@@ -256,7 +261,7 @@ public class RulesBundleManager {
      * Carrega bundle do disco (se existir).
      */
     private RulesBundle loadFromDisk() {
-        Path persistPath = Path.of(BUNDLE_PERSIST_FILE);
+        Path persistPath = resolvePersistPath();
         if (!Files.exists(persistPath)) {
             return null;
         }
@@ -269,5 +274,25 @@ public class RulesBundleManager {
             logger.warn("Failed to load rules bundle from disk — ignoring", ex);
             return null;
         }
+    }
+
+    private Path resolvePersistPath() {
+        ConfigurationManager configurationManager = applicationContext.getBean(ConfigurationManager.class);
+        ServerConfiguration serverConfiguration = configurationManager.getServerConfiguration();
+        if (serverConfiguration != null) {
+            ClusterConfiguration clusterConfiguration = serverConfiguration.getCluster();
+            if (clusterConfiguration != null
+                    && clusterConfiguration.getDataDirectory() != null
+                    && !clusterConfiguration.getDataDirectory().isBlank()) {
+                return Path.of(clusterConfiguration.getDataDirectory(), BUNDLE_PERSIST_FILE_NAME);
+            }
+        }
+
+        String tmpDir = System.getProperty("java.io.tmpdir");
+        if (tmpDir != null && !tmpDir.isBlank()) {
+            return Path.of(tmpDir, "ngate", BUNDLE_PERSIST_FILE_NAME);
+        }
+
+        return Path.of("data", BUNDLE_PERSIST_FILE_NAME);
     }
 }

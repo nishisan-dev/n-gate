@@ -42,6 +42,7 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /**
@@ -73,6 +74,7 @@ public class ConfigurationManager {
 
     private ObjectMapper yamlSerializer = new ObjectMapper(new YAMLFactory());
 
+    @Order(10)
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         this.loadConfiguration();

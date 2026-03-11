@@ -32,6 +32,7 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -78,6 +79,7 @@ public class ClusterService {
      */
     private final List<BiConsumer<Boolean, String>> leadershipListeners = new CopyOnWriteArrayList<>();
 
+    @Order(20)
     @EventListener(ApplicationReadyEvent.class)
     private void onStartup() {
         var config = configurationManager.loadConfiguration();
