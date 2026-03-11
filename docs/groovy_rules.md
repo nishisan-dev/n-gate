@@ -218,33 +218,19 @@ if (clientToken != null) {
 
 ### 4. Headers no Response ao Cliente
 
-Adiciona headers customizados na resposta que o cliente receberá.
+Adiciona headers customizados na resposta que o cliente receberá, utilizando um **Response Processor** com `wl.clientResponse.addHeader()`.
 
-#### Abordagem 1 — Direto no Script (antes do proxy)
-
-Usa o `context` para definir headers no response antes de encaminhar ao backend:
-
-```groovy
-// rules/default/Rules.groovy
-
-// Headers estáticos — sempre presentes no response
-context.header("X-Powered-By", "n-gate")
-context.header("X-Request-Id", java.util.UUID.randomUUID().toString())
-
-// Header condicional
-if (context.path().startsWith("/api/")) {
-    context.header("X-API-Version", "2.1.1")
-}
-```
-
-#### Abordagem 2 — Via Response Processor (após resposta do backend)
-
-Usa `workload.clientResponse()` para manipular headers **depois** de receber o response do upstream:
+> [!IMPORTANT]
+> O método correto para injetar headers no response ao cliente é via **Response Processor**, usando `wl.clientResponse.addHeader()`. Essa é a abordagem validada nos testes do projeto e funciona em todos os cenários (streaming, materializado e sintético). Evite `context.header()` para este propósito — ele opera na camada Javalin e pode não sobreviver ao pipeline de proxy em todos os modos de resposta.
 
 ```groovy
 // rules/default/Rules.groovy
 
 def addResponseHeaders = { wl ->
+    // Headers estáticos — sempre presentes no response
+    wl.clientResponse.addHeader("X-Powered-By", "n-gate")
+    wl.clientResponse.addHeader("X-Request-Id", java.util.UUID.randomUUID().toString())
+
     // Propaga headers seletivos do upstream para o cliente
     def backendVersion = wl.upstreamResponse?.getHeader("X-Backend-Version")
     if (backendVersion) {
