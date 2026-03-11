@@ -20,7 +20,7 @@ package dev.nishisan.ngate.http;
 import static brave.Tracing.currentTracer;
 import dev.nishisan.ngate.auth.IAuthUserPrincipal;
 import dev.nishisan.ngate.configuration.EndPointURLContext;
-import dev.nishisan.ngate.observabitliy.wrappers.TracerWrapper;
+import dev.nishisan.ngate.observability.wrappers.TracerWrapper;
 import io.javalin.config.Key;
 import io.javalin.config.MultipartConfig;
 import io.javalin.http.ContentType;

@@ -18,7 +18,7 @@ package dev.nishisan.ngate.health;
 
 import dev.nishisan.ngate.cluster.ClusterService;
 import dev.nishisan.ngate.manager.ConfigurationManager;
-import dev.nishisan.ngate.observabitliy.service.TracerService;
+import dev.nishisan.ngate.observability.service.TracerService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;

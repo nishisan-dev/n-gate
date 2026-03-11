@@ -31,7 +31,7 @@ import dev.nishisan.ngate.auth.ITokenDecoder;
 import dev.nishisan.ngate.auth.JWTUserPrincipal;
 import dev.nishisan.ngate.exception.TokenDecodeException;
 import dev.nishisan.ngate.http.CustomContextWrapper;
-import dev.nishisan.ngate.observabitliy.wrappers.TracerWrapper;
+import dev.nishisan.ngate.observability.wrappers.TracerWrapper;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.interfaces.RSAPublicKey;

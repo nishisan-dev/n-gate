@@ -22,7 +22,7 @@ import dev.nishisan.ngate.auth.IAuthUserPrincipal;
 import dev.nishisan.ngate.auth.ITokenDecoder;
 import dev.nishisan.ngate.exception.TokenDecodeException;
 import dev.nishisan.ngate.http.CustomContextWrapper;
-import dev.nishisan.ngate.observabitliy.wrappers.TracerWrapper;
+import dev.nishisan.ngate.observability.wrappers.TracerWrapper;
 import groovy.lang.Closure;
 import java.net.MalformedURLException;
 import java.util.Date;

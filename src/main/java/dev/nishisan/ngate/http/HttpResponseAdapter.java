@@ -17,8 +17,8 @@
 package dev.nishisan.ngate.http;
 
 import dev.nishisan.ngate.http.synth.response.SyntHttpResponse;
-import dev.nishisan.ngate.observabitliy.wrappers.SpanWrapper;
-import dev.nishisan.ngate.observabitliy.wrappers.TracerWrapper;
+import dev.nishisan.ngate.observability.wrappers.SpanWrapper;
+import dev.nishisan.ngate.observability.wrappers.TracerWrapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
