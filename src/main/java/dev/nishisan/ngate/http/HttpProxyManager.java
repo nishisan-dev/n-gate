@@ -167,6 +167,10 @@ public class HttpProxyManager {
                 configuration.getConnectionPoolSize(), configuration.getConnectionPoolKeepAliveMinutes());
     }
 
+    public EndPointConfiguration getConfiguration() {
+        return this.configuration;
+    }
+
     /**
      * Cria ou Recupera o HTTP Client Associado ao Backend com as devidas
      * configurações de segurança

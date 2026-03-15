@@ -16,10 +16,13 @@
  */
 package dev.nishisan.ngate.http.clients;
 
+import dev.nishisan.ngate.configuration.BackendConfiguration;
 import dev.nishisan.ngate.http.HttpProxyManager;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  *
@@ -28,10 +31,41 @@ import java.util.UUID;
  */
 public class HttpClientUtils {
 
+    private static final Logger logger = LogManager.getLogger(HttpClientUtils.class);
     private final HttpProxyManager proxyManager;
 
     public HttpClientUtils(HttpProxyManager proxyManager) {
         this.proxyManager = proxyManager;
+    }
+
+    /**
+     * Retorna um {@link BackendClient} fluent para o backend configurado.
+     * <p>
+     * A base URL é resolvida automaticamente a partir da configuração YAML
+     * ({@code backends.<name>.members[0].url}) e o OkHttpClient já vem
+     * configurado com interceptors de autenticação OAuth (se aplicável).
+     * <p>
+     * Uso no Groovy:
+     * <pre>
+     * def res = utils.backend("validator").post("/check", body)
+     * </pre>
+     *
+     * @param name nome do backend conforme definido em adapter.yaml
+     * @return BackendClient pronto para uso, ou null se o backend não existir
+     */
+    public BackendClient backend(String name) {
+        BackendConfiguration backendConfig = proxyManager.getConfiguration().getBackends().get(name);
+        if (backendConfig == null || backendConfig.getMembers().isEmpty()) {
+            logger.error("Backend [{}] not found or has no members configured", name);
+            return null;
+        }
+        String baseUrl = backendConfig.getMembers().get(0).getUrl();
+        try {
+            return new BackendClient(proxyManager.getHttpClientByListenerName(name), baseUrl);
+        } catch (KeyManagementException | NoSuchAlgorithmException ex) {
+            logger.error("Failed to create BackendClient for [{}]", name, ex);
+            return null;
+        }
     }
 
     public HttpClientWrapper getClient() {
