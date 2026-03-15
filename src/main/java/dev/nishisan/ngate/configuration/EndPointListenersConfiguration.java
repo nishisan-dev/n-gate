@@ -16,6 +16,7 @@
  */
 package dev.nishisan.ngate.configuration;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,6 +37,14 @@ public class EndPointListenersConfiguration {
     private SecureProviderConfig secureProvider;
     private Map<String, EndPointURLContext> urlContexts = new ConcurrentHashMap<>();
     private SSLListenerConfiguration sslConfiguration = new SSLListenerConfiguration();
+
+    /**
+     * Virtual hosts: mapping de serverName → backendName.
+     * Quando o header Host da request casa com um serverName, o backend
+     * correspondente é utilizado ao invés do defaultBackend.
+     * Suporta exact match e wildcards (ex: "*.example.com").
+     */
+    private Map<String, String> virtualHosts = new LinkedHashMap<>();
 
     public Boolean getScriptOnly() {
         return scriptOnly;
@@ -155,6 +164,14 @@ public class EndPointListenersConfiguration {
 
     public void setRateLimit(RateLimitRefConfiguration rateLimit) {
         this.rateLimit = rateLimit;
+    }
+
+    public Map<String, String> getVirtualHosts() {
+        return virtualHosts;
+    }
+
+    public void setVirtualHosts(Map<String, String> virtualHosts) {
+        this.virtualHosts = virtualHosts;
     }
 
 }

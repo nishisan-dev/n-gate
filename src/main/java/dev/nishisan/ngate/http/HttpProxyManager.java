@@ -546,6 +546,23 @@ public class HttpProxyManager {
                         && !w.getRequest().getBackend().trim().equals("")) {
                     backendname = w.getRequest().getBackend().trim();
                     logger.debug("Backend Changed to:[{}]", backendname);
+                } else if (endPointConfiguration.getVirtualHosts() != null
+                        && !endPointConfiguration.getVirtualHosts().isEmpty()) {
+                    // Virtual host: resolve pelo Host header
+                    String hostHeader = handler.header("Host");
+                    Optional<String> vhostBackend = VirtualHostResolver.resolve(
+                            hostHeader, endPointConfiguration.getVirtualHosts());
+                    if (vhostBackend.isPresent()) {
+                        backendname = vhostBackend.get();
+                        requestRootSpan.tag("vhost.match", backendname);
+                        requestRootSpan.tag("http.host", hostHeader);
+                        logger.debug("Virtual host matched: Host=[{}] → Backend=[{}]", hostHeader, backendname);
+                    } else if (endPointConfiguration.getDefaultBackend() != null
+                            && !endPointConfiguration.getDefaultBackend().trim().equals("")) {
+                        backendname = endPointConfiguration.getDefaultBackend().trim();
+                        requestRootSpan.tag("http.host", hostHeader);
+                        logger.debug("Virtual host no match, using defaultBackend: [{}]", backendname);
+                    }
                 } else if (endPointConfiguration.getDefaultBackend() != null) {
                     if (!endPointConfiguration.getDefaultBackend().trim().equals("")) {
                         backendname = endPointConfiguration.getDefaultBackend().trim();

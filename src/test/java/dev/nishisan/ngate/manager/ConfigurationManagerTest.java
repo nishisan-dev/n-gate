@@ -229,4 +229,64 @@ class ConfigurationManagerTest {
         assertEquals("http://localhost:3000",
                 restoredEp.getBackends().get("test-backend").getMembers().get(0).getUrl());
     }
+
+    @Test
+    @Order(5)
+    @DisplayName("T5: YAML com virtualHosts é parseado corretamente")
+    void testVirtualHostsParsing() throws IOException {
+        String yaml = """
+                ---
+                endpoints:
+                  default:
+                    listeners:
+                      http:
+                        listenAddress: "0.0.0.0"
+                        listenPort: 8080
+                        ssl: false
+                        secured: false
+                        defaultBackend: "fallback"
+                        virtualHosts:
+                          "api.example.com": "api-backend"
+                          "admin.example.com": "admin-backend"
+                          "*.cdn.example.com": "cdn-backend"
+                        urlContexts:
+                          default:
+                            context: "/*"
+                            method: "ANY"
+                    backends:
+                      api-backend:
+                        backendName: "api-backend"
+                        members:
+                          - url: "http://api:3000"
+                      admin-backend:
+                        backendName: "admin-backend"
+                        members:
+                          - url: "http://admin:3001"
+                      cdn-backend:
+                        backendName: "cdn-backend"
+                        members:
+                          - url: "http://cdn:3002"
+                      fallback:
+                        backendName: "fallback"
+                        members:
+                          - url: "http://fallback:3003"
+                    ruleMapping: "default/Rules.groovy"
+                """;
+
+        File configFile = tempDir.resolve("adapter-vhost.yaml").toFile();
+        try (FileWriter writer = new FileWriter(configFile)) {
+            writer.write(yaml);
+        }
+
+        ServerConfiguration config = yamlMapper.readValue(configFile, ServerConfiguration.class);
+
+        EndPointListenersConfiguration listener = config.getEndpoints().get("default")
+                .getListeners().get("http");
+        assertNotNull(listener.getVirtualHosts(), "virtualHosts should not be null");
+        assertEquals(3, listener.getVirtualHosts().size());
+        assertEquals("api-backend", listener.getVirtualHosts().get("api.example.com"));
+        assertEquals("admin-backend", listener.getVirtualHosts().get("admin.example.com"));
+        assertEquals("cdn-backend", listener.getVirtualHosts().get("*.cdn.example.com"));
+        assertEquals("fallback", listener.getDefaultBackend());
+    }
 }

@@ -76,6 +76,41 @@ listeners:
 | `secured` | Boolean | `false` | Habilita validação JWT nos requests de entrada |
 | `secureProvider` | Object | — | Configuração do provider de decodificação de token |
 | `rateLimit` | Object | `null` | Referência a uma zona de rate limiting (veja [Rate Limiting](#rate-limiting)) |
+| `virtualHosts` | Map | `{}` | Mapping `serverName -> backendName` para roteamento por hostname (veja [Virtual Hosts](#virtual-hosts)) |
+
+### Virtual Hosts
+
+O campo `virtualHosts` permite rotear requests para backends diferentes com base no header `Host` da request HTTP, sem precisar de múltiplas portas. Se `virtualHosts` não for configurado, o comportamento é idêntico ao legado (`defaultBackend`).
+
+**Ordem de resolução de backend:**
+1. **Groovy rules** — `request.setBackend(...)` (maior prioridade)
+2. **Virtual hosts** — match do header `Host` contra `virtualHosts`
+3. **`defaultBackend`** — fallback final
+
+**Matching de hostname (prioridade):**
+1. **Exact match** — `"api.example.com"` (case-insensitive)
+2. **Wildcard** — `"*.example.com"` (mais específico ganha)
+
+> O header `Host` é normalizado automaticamente: porta é removida (ex: `api.example.com:8080` -> `api.example.com`) e convertido para lowercase.
+
+```yaml
+listeners:
+  http:
+    listenAddress: "0.0.0.0"
+    listenPort: 8080
+    defaultBackend: "fallback-api"
+    virtualHosts:
+      "api.example.com": "api-backend"
+      "admin.example.com": "admin-backend"
+      "*.cdn.example.com": "cdn-backend"
+```
+
+| Host Header | Backend Selecionado | Motivo |
+|-------------|---------------------|--------|
+| `api.example.com` | `api-backend` | Exact match |
+| `admin.example.com` | `admin-backend` | Exact match |
+| `img.cdn.example.com` | `cdn-backend` | Wildcard `*.cdn.example.com` |
+| `unknown.com` | `fallback-api` | Nenhum match -> `defaultBackend` |
 
 ### URL Contexts
 
