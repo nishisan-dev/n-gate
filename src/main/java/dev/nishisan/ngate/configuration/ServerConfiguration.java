@@ -96,6 +96,7 @@ public class ServerConfiguration {
     }
 
     private RateLimitConfiguration rateLimiting;
+    private DashboardConfiguration dashboard;
 
     public RateLimitConfiguration getRateLimiting() {
         return rateLimiting;
@@ -103,6 +104,14 @@ public class ServerConfiguration {
 
     public void setRateLimiting(RateLimitConfiguration rateLimiting) {
         this.rateLimiting = rateLimiting;
+    }
+
+    public DashboardConfiguration getDashboard() {
+        return dashboard;
+    }
+
+    public void setDashboard(DashboardConfiguration dashboard) {
+        this.dashboard = dashboard;
     }
 
 }

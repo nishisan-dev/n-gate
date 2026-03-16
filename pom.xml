@@ -322,6 +322,13 @@
             <artifactId>resilience4j-micrometer</artifactId>
             <version>2.2.0</version>
         </dependency>
+
+        <!-- H2 Database: embedded storage para o dashboard de observabilidade -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
     <!-- 
      Parte que Cuida de Criar o Jar, com o main class e o manifest e criar a pasta lib
