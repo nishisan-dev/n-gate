@@ -355,3 +355,42 @@ O n-gate implementa rate limiting granular em 3 escopos (listener, rota, backend
 | `ngate.ratelimit.available_permits` | Gauge | key | Permits disponíveis por rate limiter |
 
 Para configuração detalhada, veja [docs/rate-limiting.md](rate-limiting.md) e [docs/configuration.md](configuration.md#rate-limiting).
+
+---
+
+## Tunnel Mode
+
+Quando `mode: tunnel`, o n-gate expõe métricas TCP específicas via `TunnelMetrics`:
+
+### Métricas de Conexão
+
+| Métrica | Tipo | Tags | Descrição |
+|---------|------|------|-----------|
+| `ngate.tunnel.connections.total` | Counter | vport, member | Total de conexões TCP aceitas |
+| `ngate.tunnel.connections.active` | Gauge | vport, member | Conexões TCP ativas no momento |
+| `ngate.tunnel.session.duration` | Timer | vport, member | Duração da sessão TCP (ms) |
+
+### Métricas de Throughput
+
+| Métrica | Tipo | Tags | Descrição |
+|---------|------|------|-----------|
+| `ngate.tunnel.bytes.sent` | Counter | vport, member | Bytes enviados (client → backend) |
+| `ngate.tunnel.bytes.received` | Counter | vport, member | Bytes recebidos (backend → client) |
+
+### Métricas de Erro
+
+| Métrica | Tipo | Tags | Descrição |
+|---------|------|------|-----------|
+| `ngate.tunnel.connect.errors` | Counter | vport, member, error | Erros de connect (refused, timeout, no_route) |
+| `ngate.tunnel.connect.duration` | Timer | vport, member | Latência de connect ao backend (ms) |
+
+### Métricas de Pool
+
+| Métrica | Tipo | Tags | Descrição |
+|---------|------|------|-----------|
+| `ngate.tunnel.pool.members` | Gauge | vport, status | Membros por status (ACTIVE, STANDBY, DRAINING) |
+| `ngate.tunnel.pool.removals` | Counter | vport, member, reason | Remoções do pool (graceful, keepalive_timeout, io_exception) |
+| `ngate.tunnel.pool.standby_promotions` | Counter | vport | Promoções de STANDBY → ACTIVE |
+| `ngate.tunnel.listeners.active` | Gauge | — | Listeners TCP ativos |
+
+Para configuração do Tunnel Mode, veja [docs/configuration.md](configuration.md#tunnel-mode).

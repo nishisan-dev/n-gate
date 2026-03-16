@@ -1,0 +1,47 @@
+@startuml tunnel_mode
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+
+title n-gate — Tunnel Mode Topology
+
+package "Proxy Instances (mode: proxy)" {
+  component [Proxy A\n9091→19091] as PA
+  component [Proxy B\n9091→29091] as PB
+  component [Proxy C\n9091→39091\n(STANDBY)] as PC
+}
+
+cloud "NGrid Mesh" as NGRID {
+  database "DistributedMap\nngate-tunnel-registry" as NMAP
+}
+
+package "Tunnel Instance (mode: tunnel)" {
+  component [TunnelService\n(orchestrator)] as TS
+
+  component [TunnelRegistry\n• poll NMap 1s\n• keepalive checker\n• auto-promote STANDBY] as TR
+
+  component [TunnelEngine\n• ServerSocketChannel\n• TCP pipe (VirtualThreads)\n• IOException detection] as TE
+
+  component [VirtualPortGroup\n:9091\n• RoundRobin / LC / WRR\n• member pool] as VPG
+
+  component [TunnelMetrics\n• Prometheus] as TM
+}
+
+component [Client] as C
+
+PA --> NMAP : publish + keepalive
+PB --> NMAP : publish + keepalive
+PC --> NMAP : publish (STANDBY)
+
+NMAP --> TR : get(key)
+TS --> TR : start()
+TS --> TE : start()
+TR --> VPG : addOrUpdate / remove
+TR ..> TE : onGroupCreated\nonGroupRemoved
+
+C --> TE : TCP connect :9091
+TE --> VPG : selectNext()
+VPG --> PA : pipe TCP
+VPG --> PB : pipe TCP
+TE --> TM : record metrics
+@enduml

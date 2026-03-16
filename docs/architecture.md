@@ -230,6 +230,8 @@ workload.returnPipe = false  // materializa para permitir inspeção
 | `dev.nishisan.ngate.http.synth` | Respostas HTTP sintéticas |
 | `dev.nishisan.ngate.manager` | Gerenciadores de configuração e endpoints |
 | `dev.nishisan.ngate.upstream` | Upstream Pool: `UpstreamPoolManager`, `UpstreamPool`, `UpstreamMemberState`, `UpstreamHealthChecker` |
+| `dev.nishisan.ngate.tunnel` | Tunnel Mode: `TunnelService`, `TunnelEngine`, `TunnelRegistry`, `VirtualPortGroup`, `BackendMember` |
+| `dev.nishisan.ngate.tunnel.lb` | Algoritmos de LB: `RoundRobinBalancer`, `LeastConnectionsBalancer`, `WeightedRoundRobinBalancer` |
 | `dev.nishisan.ngate.observabitliy` | TracerService, SpanWrapper, TracerWrapper, ProxyMetrics |
 
 ---
@@ -276,6 +278,65 @@ O deploy de scripts Groovy é feito via Admin API (`POST /admin/rules/deploy`) e
 
 ---
 
+## Tunnel Mode (TCP L4 Load Balancer)
+
+O n-gate suporta um **tunnel mode** que funciona como TCP L4 load balancer, eliminando a necessidade de load balancers externos. O tunnel recebe conexões TCP e as distribui entre múltiplas instâncias proxy via algoritmos de balanceamento.
+
+### Topologia
+
+![Topologia Tunnel](https://uml.nishisan.dev/proxy?src=https://raw.githubusercontent.com/nishisan-dev/n-gate/main/docs/diagrams/tunnel_mode.puml)
+
+### Princípio — Um processo é um OU outro
+
+Um processo n-gate roda com `mode: proxy` OU `mode: tunnel`, nunca ambos. O tunnel se comporta como um listener TCP puro que distribui conexões entre proxies registrados.
+
+### Componentes
+
+| Componente | Classe | Responsabilidade |
+|------------|--------|-----------------|
+| **TunnelService** | `TunnelService` | Orquestrador Spring — inicializa Registry e Engine |
+| **TunnelEngine** | `TunnelEngine` | Core TCP — `ServerSocketChannel` dinâmico + pipe bidirecional via Virtual Threads |
+| **TunnelRegistry** | `TunnelRegistry` | Observa NGrid `DistributedMap` via polling — mantém `VirtualPortGroup`s sincronizados |
+| **VirtualPortGroup** | `VirtualPortGroup` | Pool de membros para uma porta virtual — seleção via LB + promoção STANDBY |
+| **TunnelRegistrationService** | `TunnelRegistrationService` | (modo proxy) Publica registro no NGrid + mantém keepalive |
+| **TunnelMetrics** | `TunnelMetrics` | Instrumentação Prometheus completa |
+
+### Registro (Push Model)
+
+Cada proxy (`mode: proxy`) com `tunnel.registration.enabled: true` publica um `TunnelRegistryEntry` no NGrid `DistributedMap("ngate-tunnel-registry")`. O registro contém:
+- `nodeId`, `host`, `listeners[]` (virtualPort → realPort), `status`, `weight`, `keepaliveInterval`
+
+O proxy mantém keepalive periódico (default: 3s). No shutdown, entra em `DRAINING` e aguarda `drainTimeout` antes de remover o registro.
+
+### Load Balancing
+
+O tunnel suporta 3 algoritmos de load balancing:
+
+| Algoritmo | Descrição |
+|-----------|-----------|
+| `round-robin` | Distribuição sequencial entre membros ativos |
+| `least-connections` | Seleciona o membro com menor número de conexões ativas |
+| `weighted-round-robin` | SWRR (Nginx-style) — distribuição proporcional aos pesos |
+
+### Detecção de Falha
+
+| Camada | Mecanismo | Ação |
+|--------|-----------|------|
+| **L1 — IOException** | `ConnectException`, `NoRouteToHostException` no connect | Remoção imediata do pool |
+| **L2 — Keepalive timeout** | `missedKeepalives × keepaliveInterval` sem update | Remoção do pool |
+| **Auto-promote** | Zero ACTIVE + STANDBY disponível | Promove STANDBY com maior peso |
+
+### Boot Condicional
+
+Quando `mode: tunnel`:
+- `EndpointManager` **não** inicializa listeners Javalin
+- `ConfigurationManager` **não** inicializa OAuth, Circuit Breaker, Rate Limiting
+- `TunnelService` inicializa o `TunnelRegistry` e `TunnelEngine`
+
+Para referência de configuração, veja [docs/configuration.md](configuration.md#tunnel-mode).
+
+---
+
 ## Circuit Breaker
 
 O n-gate protege backends com [Resilience4j](https://resilience4j.readme.io/), gerenciado pelo `BackendCircuitBreakerManager`.
@@ -307,6 +368,13 @@ O `ProxyMetrics` instrumenta o hot path com counters e timers Micrometer:
 | `ngate.ratelimit.available_permits` | Gauge | key | Permits disponíveis por rate limiter |
 | `ngate.cluster.active.members` | Gauge | — | Membros ativos no cluster |
 | `ngate.cluster.is.leader` | Gauge | — | 1=leader, 0=follower |
+| `ngate.tunnel.connections.total` | Counter | vport, member | Conexões TCP aceitas no tunnel |
+| `ngate.tunnel.connections.active` | Gauge | vport, member | Conexões TCP ativas |
+| `ngate.tunnel.bytes.sent` | Counter | vport, member | Bytes enviados (client→backend) |
+| `ngate.tunnel.bytes.received` | Counter | vport, member | Bytes recebidos (backend→client) |
+| `ngate.tunnel.connect.errors` | Counter | vport, member, error | Erros de conexão ao backend |
+| `ngate.tunnel.pool.members` | Gauge | vport, status | Membros por status no pool |
 
 Endpoint: `GET /actuator/prometheus` (porta `9190`)
+
 

@@ -7,6 +7,8 @@ O n-gate é configurado através do arquivo `adapter.yaml`, cujo caminho é defi
 ## Estrutura Geral
 
 ```yaml
+mode: "proxy"                      # Modo de operação: "proxy" (default) ou "tunnel"
+
 endpoints:
   default:
     listeners:     # Listeners HTTP/HTTPS
@@ -33,6 +35,7 @@ cluster:            # Cluster mode NGrid (opt-in)
 admin:              # Admin API para deploy de rules
 circuitBreaker:     # Circuit breaker por backend
 rateLimiting:       # Rate limiting por listener/rota/backend
+tunnel:             # Tunnel mode — configuração do TCP L4 LB
 ```
 
 ---
@@ -77,6 +80,7 @@ listeners:
 | `secureProvider` | Object | — | Configuração do provider de decodificação de token |
 | `rateLimit` | Object | `null` | Referência a uma zona de rate limiting (veja [Rate Limiting](#rate-limiting)) |
 | `virtualHosts` | Map | `{}` | Mapping `serverName -> backendName` para roteamento por hostname (veja [Virtual Hosts](#virtual-hosts)) |
+| `virtualPort` | Integer | `null` | Porta virtual para Tunnel Mode — se definido, o tunnel escuta nesta porta e roteia para `listenPort` real |
 
 ### Virtual Hosts
 
@@ -510,6 +514,101 @@ Se qualquer nível rejeitar, o request é bloqueado com HTTP 429.
 | `Retry-After` | Segundos sugeridos de espera |
 
 Para referência detalhada, veja [docs/rate-limiting.md](rate-limiting.md).
+
+---
+
+## Tunnel Mode
+
+O bloco `tunnel:` configura o Tunnel Mode, permitindo que o n-gate funcione como um TCP L4 load balancer. Requer `mode: tunnel` e `cluster.enabled: true`.
+
+### Campos de Nível Raiz
+
+| Campo | Tipo | Default | Descrição |
+|-------|------|---------|-----------|
+| `mode` | String | `"proxy"` | Modo de operação: `proxy` ou `tunnel` |
+
+### Campos do Tunnel (bloco `tunnel:`)
+
+| Campo | Tipo | Default | Descrição |
+|-------|------|---------|-----------|
+| `loadBalancing` | String | `"round-robin"` | Algoritmo de LB: `round-robin`, `least-connections`, `weighted-round-robin` |
+| `missedKeepalives` | Integer | `3` | Keepalives perdidos antes de expulsar um membro |
+| `drainTimeout` | Integer | `30` | Segundos para aguardar drain no shutdown graceful |
+| `bindAddress` | String | `"0.0.0.0"` | Endereço de bind dos listeners TCP do tunnel |
+| `autoPromoteStandby` | Boolean | `true` | Promover STANDBY automaticamente quando zero ACTIVE |
+| `registration` | Object | `null` | Configuração de registro do proxy no tunnel |
+
+### Campos do Registration (bloco `tunnel.registration:`)
+
+| Campo | Tipo | Default | Descrição |
+|-------|------|---------|-----------|
+| `enabled` | Boolean | `false` | Habilita o registro deste proxy no tunnel |
+| `keepaliveInterval` | Integer | `3` | Intervalo de keepalive em segundos |
+| `status` | String | `"ACTIVE"` | Status inicial: `ACTIVE` ou `STANDBY` |
+| `weight` | Integer | `100` | Peso para o algoritmo weighted-round-robin |
+
+### Exemplo — Tunnel Node
+
+```yaml
+---
+mode: tunnel
+tunnel:
+  loadBalancing: "least-connections"
+  missedKeepalives: 3
+  drainTimeout: 30
+  bindAddress: "0.0.0.0"
+  autoPromoteStandby: true
+cluster:
+  enabled: true
+  host: "0.0.0.0"
+  port: 7100
+  clusterName: "ngate-cluster"
+  seeds:
+    - "tunnel-node:7100"
+    - "proxy-node-1:7100"
+    - "proxy-node-2:7100"
+```
+
+### Exemplo — Proxy com Registration
+
+```yaml
+---
+mode: proxy
+endpoints:
+  default:
+    listeners:
+      http:
+        listenAddress: "0.0.0.0"
+        listenPort: 19091
+        virtualPort: 9091        # tunnel escuta em 9091
+        ssl: false
+        secured: false
+        urlContexts:
+          default:
+            context: "/*"
+            method: "ANY"
+    backends:
+      backend:
+        backendName: "my-api"
+        members:
+          - url: "http://api:8080"
+    ruleMapping: "default/Rules.groovy"
+tunnel:
+  registration:
+    enabled: true
+    keepaliveInterval: 3
+    status: "ACTIVE"
+    weight: 100
+cluster:
+  enabled: true
+  host: "0.0.0.0"
+  port: 7100
+  clusterName: "ngate-cluster"
+  seeds:
+    - "tunnel-node:7100"
+    - "proxy-node-1:7100"
+    - "proxy-node-2:7100"
+```
 
 ---
 
