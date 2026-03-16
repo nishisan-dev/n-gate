@@ -6,3 +6,4 @@ log/
 .m2-local/
 .ai/
 .vscode/
+node_modules/
