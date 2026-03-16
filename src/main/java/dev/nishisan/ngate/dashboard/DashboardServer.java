@@ -126,10 +126,12 @@ public class DashboardServer {
                 });
             });
 
-            // SPA Fallback (React Router) — qualquer rota não-API retorna index.html
+            // SPA Fallback (React Router) — qualquer rota não-API/não-asset retorna index.html
             javalinConfig.routes.get("/*", ctx -> {
                 String path = ctx.path();
-                if (!path.startsWith("/api/") && !path.startsWith("/ws/")) {
+                // Não interceptar rotas de API, WebSocket ou arquivos estáticos (com extensão)
+                if (!path.startsWith("/api/") && !path.startsWith("/ws/")
+                        && !path.matches(".*\\.[a-zA-Z0-9]+$")) {
                     InputStream indexStream = getClass().getResourceAsStream("/static/dashboard/index.html");
                     if (indexStream != null) {
                         ctx.contentType("text/html");
