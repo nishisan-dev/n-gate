@@ -12,11 +12,17 @@ export const api = {
     return res.json();
   },
 
-  async getMetricHistory(name: string, from?: string, to?: string) {
+  async getMetricHistory(name: string, from?: string, to?: string, tier?: string) {
     const params = new URLSearchParams({ name });
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (tier) params.set('tier', tier);
     const res = await fetch(`${API_BASE}/metrics/history?${params}`);
+    return res.json();
+  },
+
+  async getMetricTiers() {
+    const res = await fetch(`${API_BASE}/metrics/tiers`);
     return res.json();
   },
 

@@ -106,20 +106,24 @@ export function MetricsCards({ metrics }: Props) {
       try {
         const now = new Date();
         const from = new Date(now.getTime() - 3600 * 1000); // last 1h
-        const records = await api.getMetricHistory(
+        const response = await api.getMetricHistory(
           expandedCard,
           from.toISOString(),
           now.toISOString()
         );
-        const points: SparklinePoint[] = (records || []).map(
-          (r: { timestamp: string; value: number }) => ({
-            time: new Date(r.timestamp).toLocaleTimeString('pt-BR', {
+        // Handle new RRD format: { tier, points, data: [...] }
+        const records = response?.data || response || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const points: SparklinePoint[] = records.map((r: any) => {
+          const ts = r.timestamp || r.bucket_ts;
+          return {
+            time: new Date(ts).toLocaleTimeString('pt-BR', {
               hour: '2-digit',
               minute: '2-digit',
             }),
-            value: Math.round(r.value * 100) / 100,
-          })
-        );
+            value: Math.round((r.avg ?? r.val_avg ?? r.value ?? 0) * 100) / 100,
+          };
+        });
         setSparkData(points);
       } catch {
         setSparkData([]);

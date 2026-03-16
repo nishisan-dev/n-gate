@@ -34,6 +34,17 @@
   letter-spacing: 0.06em;
 }
 
+.tier-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary-dim);
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .chart-controls {
   display: flex;
   align-items: center;

@@ -80,6 +80,7 @@ public class DashboardApiRoutes {
             String name = ctx.queryParam("name");
             String fromStr = ctx.queryParam("from");
             String toStr = ctx.queryParam("to");
+            String tierParam = ctx.queryParam("tier"); // opcional: forçar um tier
 
             if (name == null || name.isBlank()) {
                 ctx.status(400).json(Map.of("error", "Parâmetro 'name' é obrigatório"));
@@ -89,12 +90,39 @@ public class DashboardApiRoutes {
             Instant from = fromStr != null ? Instant.parse(fromStr) : Instant.now().minusSeconds(3600);
             Instant to = toStr != null ? Instant.parse(toStr) : Instant.now();
 
-            var records = storage.queryMetrics(name, from, to);
-            ctx.json(records);
+            List<DashboardStorageService.SeriesRecord> records;
+            String resolvedTier;
+
+            if (tierParam != null && !tierParam.isBlank()) {
+                // Tier forçado pelo cliente
+                records = storage.queryMetricsWithTier(name, tierParam, from, to);
+                resolvedTier = tierParam;
+            } else {
+                // Resolução automática baseada no range
+                records = storage.queryMetrics(name, from, to);
+                resolvedTier = DashboardStorageService.resolveTier(
+                        java.time.Duration.between(from, to));
+            }
+
+            // Retorna com metadata do tier usado
+            ctx.json(Map.of(
+                    "tier", resolvedTier,
+                    "points", records.size(),
+                    "data", records
+            ));
         });
 
         routes.get("/api/v1/metrics/names", ctx -> {
             ctx.json(storage.listMetricNames());
+        });
+
+        routes.get("/api/v1/metrics/tiers", ctx -> {
+            ctx.json(List.of(
+                    Map.of("name", "raw", "retention", "6h", "interval", "15s"),
+                    Map.of("name", "5min", "retention", "7d", "interval", "5min"),
+                    Map.of("name", "10min", "retention", "30d", "interval", "10min"),
+                    Map.of("name", "1hour", "retention", "365d", "interval", "1h")
+            ));
         });
 
         // ─── Topologia ──────────────────────────────────────────

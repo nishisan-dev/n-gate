@@ -7,20 +7,25 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
 import { TrendingUp, Clock } from 'lucide-react';
 import { api } from '../../api';
 import './LatencyChart.css';
 
-interface ChartDataPoint {
+interface RRDPoint {
   time: string;
   timestamp: number;
-  value: number;
+  min: number;
+  avg: number;
+  max: number;
+  count: number;
 }
 
 interface Props {
   metricName?: string;
   title?: string;
+  unit?: string;
   hours?: number;
 }
 
@@ -28,16 +33,20 @@ const TIME_RANGES = [
   { label: '1h', hours: 1 },
   { label: '6h', hours: 6 },
   { label: '24h', hours: 24 },
+  { label: '7d', hours: 168 },
+  { label: '30d', hours: 720 },
 ];
 
 export function LatencyChart({
   metricName = 'ngate.request.duration',
   title = 'Latência',
+  unit = 'ms',
   hours: defaultHours = 1,
 }: Props) {
-  const [data, setData] = useState<ChartDataPoint[]>([]);
+  const [data, setData] = useState<RRDPoint[]>([]);
   const [selectedRange, setSelectedRange] = useState(defaultHours);
   const [loading, setLoading] = useState(true);
+  const [tier, setTier] = useState<string>('raw');
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -45,26 +54,40 @@ export function LatencyChart({
       try {
         const now = new Date();
         const from = new Date(now.getTime() - selectedRange * 3600 * 1000);
-        const records = await api.getMetricHistory(
+        const response = await api.getMetricHistory(
           metricName,
           from.toISOString(),
           now.toISOString()
         );
 
-        const chartData: ChartDataPoint[] = (records || []).map(
-          (r: { timestamp: string; value: number }) => ({
-            time: new Date(r.timestamp).toLocaleTimeString('pt-BR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            timestamp: new Date(r.timestamp).getTime(),
-            value: Math.round(r.value * 100) / 100,
-          })
+        // New RRD response format: { tier, points, data: [...] }
+        const records = response?.data || response || [];
+        setTier(response?.tier || 'raw');
+
+        const timeFormat: Intl.DateTimeFormatOptions =
+          selectedRange <= 24
+            ? { hour: '2-digit', minute: '2-digit' }
+            : selectedRange <= 168
+              ? { month: '2-digit', day: '2-digit', hour: '2-digit' }
+              : { month: '2-digit', day: '2-digit' };
+
+        const chartData: RRDPoint[] = records.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (r: any) => {
+            const ts = r.timestamp || r.bucket_ts;
+            return {
+              time: new Date(ts).toLocaleString('pt-BR', timeFormat),
+              timestamp: new Date(ts).getTime(),
+              min: round(r.min ?? r.val_min ?? r.value ?? 0),
+              avg: round(r.avg ?? r.val_avg ?? r.value ?? 0),
+              max: round(r.max ?? r.val_max ?? r.value ?? 0),
+              count: r.count ?? r.val_count ?? 1,
+            };
+          }
         );
 
         setData(chartData);
       } catch {
-        // Sem dados — fallback
         setData([]);
       } finally {
         setLoading(false);
@@ -72,18 +95,18 @@ export function LatencyChart({
     };
 
     fetchHistory();
-    const id = setInterval(fetchHistory, 30000);
+    const refreshMs = selectedRange <= 6 ? 15000 : 60000;
+    const id = setInterval(fetchHistory, refreshMs);
     return () => clearInterval(id);
   }, [metricName, selectedRange]);
 
   const stats = useMemo(() => {
     if (data.length === 0) return { avg: 0, max: 0, min: 0, current: 0 };
-    const values = data.map((d) => d.value);
     return {
-      avg: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
-      max: Math.round(Math.max(...values)),
-      min: Math.round(Math.min(...values)),
-      current: Math.round(values[values.length - 1]),
+      avg: round(data.reduce((a, b) => a + b.avg, 0) / data.length),
+      max: round(Math.max(...data.map((d) => d.max))),
+      min: round(Math.min(...data.map((d) => d.min))),
+      current: round(data[data.length - 1].avg),
     };
   }, [data]);
 
@@ -93,17 +116,18 @@ export function LatencyChart({
         <div className="chart-title-group">
           <TrendingUp size={14} />
           <h3>{title}</h3>
+          <span className="tier-badge mono">{tier}</span>
         </div>
         <div className="chart-controls">
           <div className="chart-stats">
             <span className="chart-stat">
-              avg: <strong>{stats.avg}ms</strong>
+              avg: <strong>{stats.avg}{unit}</strong>
             </span>
             <span className="chart-stat">
-              max: <strong className="text-warning">{stats.max}ms</strong>
+              max: <strong className="text-warning">{stats.max}{unit}</strong>
             </span>
             <span className="chart-stat">
-              cur: <strong className="text-accent">{stats.current}ms</strong>
+              cur: <strong className="text-accent">{stats.current}{unit}</strong>
             </span>
           </div>
           <div className="time-range-selector">
@@ -128,15 +152,21 @@ export function LatencyChart({
           </div>
         ) : data.length === 0 ? (
           <div className="chart-empty">
-            <span>Sem dados históricos para "{metricName}"</span>
+            <span>Sem dados históricos para &quot;{metricName}&quot;</span>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="latencyGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#748FFC" stopOpacity={0.3} />
+                {/* Gradient: avg area fill */}
+                <linearGradient id={`avgGrad-${metricName}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#748FFC" stopOpacity={0.25} />
                   <stop offset="95%" stopColor="#748FFC" stopOpacity={0} />
+                </linearGradient>
+                {/* Gradient: min-max band fill */}
+                <linearGradient id={`bandGrad-${metricName}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#A5D8FF" stopOpacity={0.12} />
+                  <stop offset="95%" stopColor="#A5D8FF" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid
@@ -151,6 +181,7 @@ export function LatencyChart({
                 fontFamily="var(--font-mono)"
                 tickLine={false}
                 axisLine={false}
+                interval="preserveStartEnd"
               />
               <YAxis
                 stroke="#5C5F66"
@@ -158,27 +189,55 @@ export function LatencyChart({
                 fontFamily="var(--font-mono)"
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v) => `${v}ms`}
+                tickFormatter={(v) => `${v}${unit}`}
               />
               <Tooltip
                 contentStyle={{
                   background: '#25262B',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '8px',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontFamily: 'var(--font-mono)',
                   color: '#C1C2C5',
                 }}
                 labelStyle={{ color: '#909296' }}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: any) => [`${value}ms`, 'Latência']}
+                formatter={((value: any, name: any) => {
+                  const labels: Record<string, string> = {
+                    max: 'Máx',
+                    avg: 'Média',
+                    min: 'Mín',
+                  };
+                  return [`${value}${unit}`, labels[name] || name];
+                }) as any}
               />
+              <Legend
+                wrapperStyle={{
+                  fontSize: '10px',
+                  fontFamily: 'var(--font-mono)',
+                  color: '#909296',
+                  paddingTop: '4px',
+                }}
+              />
+              {/* Max line (top of band) */}
               <Area
                 type="monotone"
-                dataKey="value"
+                dataKey="max"
+                stroke="#FF6B6B"
+                strokeWidth={1}
+                strokeDasharray="4 2"
+                fill={`url(#bandGrad-${metricName})`}
+                dot={false}
+                activeDot={{ r: 3, fill: '#FF6B6B', strokeWidth: 0 }}
+                name="max"
+              />
+              {/* Avg line (main) */}
+              <Area
+                type="monotone"
+                dataKey="avg"
                 stroke="#748FFC"
                 strokeWidth={2}
-                fill="url(#latencyGradient)"
+                fill={`url(#avgGrad-${metricName})`}
                 dot={false}
                 activeDot={{
                   r: 4,
@@ -186,6 +245,19 @@ export function LatencyChart({
                   stroke: '#1A1B1E',
                   strokeWidth: 2,
                 }}
+                name="avg"
+              />
+              {/* Min line (bottom of band) */}
+              <Area
+                type="monotone"
+                dataKey="min"
+                stroke="#51CF66"
+                strokeWidth={1}
+                strokeDasharray="4 2"
+                fill="none"
+                dot={false}
+                activeDot={{ r: 3, fill: '#51CF66', strokeWidth: 0 }}
+                name="min"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -193,4 +265,8 @@ export function LatencyChart({
       </div>
     </div>
   );
+}
+
+function round(n: number): number {
+  return Math.round(n * 100) / 100;
 }

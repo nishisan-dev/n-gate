@@ -181,13 +181,13 @@ public class DashboardServer {
     // ─── Schedulers ─────────────────────────────────────────────────────
 
     private void startSchedulers() {
-        scheduler = Executors.newScheduledThreadPool(2, r -> {
+        scheduler = Executors.newScheduledThreadPool(4, r -> {
             Thread t = Thread.ofVirtual().unstarted(r);
             t.setName("dashboard-scheduler");
             return t;
         });
 
-        // Coleta periódica de métricas → H2
+        // Coleta periódica de métricas → H2 (tier raw)
         int scrapeInterval = config.getStorage().getScrapeIntervalSeconds();
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -200,7 +200,41 @@ public class DashboardServer {
         // Push de métricas via WebSocket a cada 5s
         scheduler.scheduleAtFixedRate(this::pushMetricsToWebSocket, 5, 5, TimeUnit.SECONDS);
 
-        // Purge de dados expirados a cada 1h
+        // ─── RRD Consolidation ──────────────────────────────────
+        // raw → 5min (a cada 5 minutos)
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                storage.consolidate(
+                        DashboardStorageService.Tier.RAW,
+                        DashboardStorageService.Tier.FIVE_MIN, 5);
+            } catch (Exception e) {
+                logger.warn("RRD consolidação raw→5min falhou: {}", e.getMessage());
+            }
+        }, 5, 5, TimeUnit.MINUTES);
+
+        // 5min → 10min (a cada 10 minutos)
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                storage.consolidate(
+                        DashboardStorageService.Tier.FIVE_MIN,
+                        DashboardStorageService.Tier.TEN_MIN, 10);
+            } catch (Exception e) {
+                logger.warn("RRD consolidação 5min→10min falhou: {}", e.getMessage());
+            }
+        }, 10, 10, TimeUnit.MINUTES);
+
+        // 10min → 1hour (a cada 1 hora)
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                storage.consolidate(
+                        DashboardStorageService.Tier.TEN_MIN,
+                        DashboardStorageService.Tier.ONE_HOUR, 60);
+            } catch (Exception e) {
+                logger.warn("RRD consolidação 10min→1hour falhou: {}", e.getMessage());
+            }
+        }, 60, 60, TimeUnit.MINUTES);
+
+        // Purge de dados expirados per-tier a cada 1h
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 storage.purgeExpired();
@@ -209,7 +243,8 @@ public class DashboardServer {
             }
         }, 1, 1, TimeUnit.HOURS);
 
-        logger.info("Dashboard schedulers iniciados: scrape={}s, ws-push=5s, purge=1h", scrapeInterval);
+        logger.info("Dashboard schedulers: scrape={}s, ws-push=5s, consolidação=5min/10min/1h, purge=1h",
+                scrapeInterval);
     }
 
     private void pushMetricsToWebSocket() {

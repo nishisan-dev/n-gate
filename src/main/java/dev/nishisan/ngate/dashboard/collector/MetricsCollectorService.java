@@ -103,7 +103,7 @@ public class MetricsCollectorService {
         });
 
         if (!records.isEmpty()) {
-            storage.saveSnapshotBatch(records);
+            storage.saveRawSnapshotBatch(records);
             logger.debug("Dashboard collector: {} snapshots salvos", records.size());
         }
     }
