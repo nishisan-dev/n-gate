@@ -60,6 +60,9 @@ export interface HealthInfo {
   status: string;
   timestamp: string;
   mode: string;
+  version: string;
+  uptime: string;
+  uptimeMs: number;
   listeners: number;
   backends: number;
 }

@@ -6,7 +6,7 @@ import { EventTimeline } from './components/EventTimeline/EventTimeline';
 import { LatencyChart } from './components/LatencyChart/LatencyChart';
 import { TracesPanel } from './components/TracesPanel/TracesPanel';
 import { useMetrics, useTopology, useHealth, useEvents } from './hooks/useDashboard';
-import { Activity, Server, Shield, Map, TrendingUp, Layers } from 'lucide-react';
+import { Activity, Server, Shield, Map, TrendingUp, Layers, Clock } from 'lucide-react';
 import './App.css';
 
 type TabId = 'topology' | 'latency' | 'traces';
@@ -34,6 +34,7 @@ function App() {
             <span className="brand-name">n-gate</span>
             <span className="brand-sub">observability</span>
           </div>
+          <span className="brand-version mono">{health?.version ?? '...'}</span>
         </div>
 
         <div className="sidebar-status">
@@ -44,6 +45,10 @@ function App() {
           <div className="status-item">
             <Server size={12} />
             <span className="status-label">{health?.mode ?? '...'}</span>
+          </div>
+          <div className="status-item">
+            <Clock size={12} />
+            <span className="status-label">{health?.uptime ?? '...'}</span>
           </div>
           <div className="status-item">
             <Activity size={12} />
@@ -96,8 +101,8 @@ function App() {
                 title="Request Duration"
               />
               <LatencyChart
-                metricName="ngate.requests.total"
-                title="Request Rate"
+                metricName="ngate.upstream.duration"
+                title="Upstream Duration"
               />
             </div>
           )}
