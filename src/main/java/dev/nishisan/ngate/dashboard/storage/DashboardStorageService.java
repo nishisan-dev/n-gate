@@ -198,35 +198,35 @@ public class DashboardStorageService {
     public void consolidate(Tier sourceTier, Tier targetTier, int bucketMinutes) {
         logger.debug("Consolidando {} → {} (bucket={}min)", sourceTier.tierName(), targetTier.tierName(), bucketMinutes);
 
-        // Calcula o bucket temporal truncando ao intervalo
-        // Usa DATEADD + DATEDIFF para alinhar ao bucket
+        // Subquery pré-computa o bucket_ts arredondado para evitar
+        // incompatibilidade do H2 com expressões duplicadas no GROUP BY
         String sql = """
                 MERGE INTO metric_series (metric_name, tier, bucket_ts, val_min, val_avg, val_max, val_count)
                 KEY (metric_name, tier, bucket_ts)
                 SELECT
-                    metric_name,
+                    s.metric_name,
                     ? AS tier,
-                    DATEADD('MINUTE',
-                        (DATEDIFF('MINUTE', TIMESTAMP '2000-01-01', bucket_ts) / ?) * ?,
-                        TIMESTAMP '2000-01-01'
-                    ) AS bucket_ts,
-                    MIN(val_min) AS val_min,
-                    CASE WHEN SUM(val_count) > 0
-                         THEN SUM(val_avg * val_count) / SUM(val_count)
+                    s.rounded_ts AS bucket_ts,
+                    MIN(s.val_min) AS val_min,
+                    CASE WHEN SUM(s.val_count) > 0
+                         THEN SUM(s.val_avg * s.val_count) / SUM(s.val_count)
                          ELSE 0 END AS val_avg,
-                    MAX(val_max) AS val_max,
-                    SUM(val_count) AS val_count
-                FROM metric_series
-                WHERE tier = ?
-                  AND bucket_ts >= ?
-                GROUP BY metric_name,
-                         DATEADD('MINUTE',
-                             (DATEDIFF('MINUTE', TIMESTAMP '2000-01-01', bucket_ts) / ?) * ?,
-                             TIMESTAMP '2000-01-01'
-                         )
+                    MAX(s.val_max) AS val_max,
+                    SUM(s.val_count) AS val_count
+                FROM (
+                    SELECT
+                        metric_name, val_min, val_avg, val_max, val_count,
+                        DATEADD('MINUTE',
+                            (DATEDIFF('MINUTE', TIMESTAMP '2000-01-01', bucket_ts) / ?) * ?,
+                            TIMESTAMP '2000-01-01'
+                        ) AS rounded_ts
+                    FROM metric_series
+                    WHERE tier = ? AND bucket_ts >= ?
+                ) s
+                GROUP BY s.metric_name, s.rounded_ts
                 """;
 
-        // Consolida dados da última janela relevante (2x o bucket para capturar edges)
+        // Consolida dados da última janela relevante (3x o bucket para capturar edges)
         Instant since = Instant.now().minus(bucketMinutes * 3L, ChronoUnit.MINUTES);
 
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -235,8 +235,6 @@ public class DashboardStorageService {
             ps.setInt(3, bucketMinutes);
             ps.setString(4, sourceTier.tierName());
             ps.setTimestamp(5, Timestamp.from(since));
-            ps.setInt(6, bucketMinutes);
-            ps.setInt(7, bucketMinutes);
 
             int merged = ps.executeUpdate();
             if (merged > 0) {
