@@ -170,5 +170,105 @@ public class ProxyMetrics {
                         .register(registry)
         ).increment();
     }
+
+    // ─── Context Request Metrics ────────────────────────────────────────
+
+    /**
+     * Registra a conclusão de um request no contexto HTTP.
+     *
+     * @param listener   nome do listener (ex: "http-noauth")
+     * @param context    nome do contexto URL (ex: "default", "api-users")
+     * @param method     método HTTP (GET, POST, etc.)
+     * @param status     código de status HTTP da resposta
+     * @param durationMs duração total do request neste contexto em milissegundos
+     */
+    public void recordContextRequest(String listener, String context, String method, int status, long durationMs) {
+        // Counter: total de requests por contexto
+        String counterKey = "context:" + listener + ":" + context + ":" + method + ":" + status;
+        counterCache.computeIfAbsent(counterKey, k ->
+                Counter.builder("ngate.context.requests.total")
+                        .description("Total requests per URL context")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("method", method)
+                        .tag("status", String.valueOf(status))
+                        .register(registry)
+        ).increment();
+
+        // Timer: duração do request por contexto
+        String timerKey = "context:" + listener + ":" + context + ":" + method;
+        timerCache.computeIfAbsent(timerKey, k ->
+                Timer.builder("ngate.context.duration")
+                        .description("Request duration per URL context")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("method", method)
+                        .register(registry)
+        ).record(Duration.ofMillis(durationMs));
+    }
+
+    /**
+     * Registra um erro no processamento de um contexto HTTP.
+     */
+    public void recordContextError(String listener, String context, String method) {
+        String key = "context-error:" + listener + ":" + context + ":" + method;
+        counterCache.computeIfAbsent(key, k ->
+                Counter.builder("ngate.context.errors")
+                        .description("Total context request errors")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("method", method)
+                        .register(registry)
+        ).increment();
+    }
+
+    // ─── Script Execution Metrics ───────────────────────────────────────
+
+    /**
+     * Registra a execução de um script Groovy.
+     *
+     * @param listener   nome do listener
+     * @param context    nome do contexto URL
+     * @param script     nome do script Groovy executado (ex: "default/Rules.groovy")
+     * @param durationMs duração da execução do script em milissegundos
+     */
+    public void recordScriptExecution(String listener, String context, String script, long durationMs) {
+        // Counter: total de execuções por script
+        String counterKey = "script:" + listener + ":" + context + ":" + script;
+        counterCache.computeIfAbsent(counterKey, k ->
+                Counter.builder("ngate.script.executions.total")
+                        .description("Total Groovy script executions")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("script", script)
+                        .register(registry)
+        ).increment();
+
+        // Timer: duração da execução do script
+        String timerKey = "script-timer:" + listener + ":" + context + ":" + script;
+        timerCache.computeIfAbsent(timerKey, k ->
+                Timer.builder("ngate.script.duration")
+                        .description("Groovy script execution duration")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("script", script)
+                        .register(registry)
+        ).record(Duration.ofMillis(durationMs));
+    }
+
+    /**
+     * Registra um erro na execução de um script Groovy.
+     */
+    public void recordScriptError(String listener, String context, String script) {
+        String key = "script-error:" + listener + ":" + context + ":" + script;
+        counterCache.computeIfAbsent(key, k ->
+                Counter.builder("ngate.script.errors")
+                        .description("Total Groovy script execution errors")
+                        .tag("listener", listener)
+                        .tag("context", context)
+                        .tag("script", script)
+                        .register(registry)
+        ).increment();
+    }
 }
 
