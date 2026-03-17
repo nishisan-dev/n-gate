@@ -45,10 +45,8 @@
 }
 
 .topo-node {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
+  position: relative;
+  min-width: 230px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
@@ -56,11 +54,23 @@
     linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent 55%),
     var(--bg-elevated);
   transition: border-color var(--transition-default), box-shadow var(--transition-default), transform var(--transition-fast);
-  min-width: 220px;
 }
 
 .topo-node:hover {
   transform: translateY(-1px);
+}
+
+.topo-node-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.topo-node-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
 }
 
 .topo-node-icon {
@@ -87,6 +97,8 @@
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -94,7 +106,18 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.topo-node-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.9;
 }
 
 .topo-node-rate {
@@ -116,6 +139,31 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.topo-node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.topo-node-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.topo-node-chip strong {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .topo-handle {
@@ -140,6 +188,20 @@
 
 .topo-backend .topo-node-icon,
 .topo-backend .topo-node-rate-value { color: var(--accent-secondary); }
+
+.topo-context .topo-node-icon,
+.topo-context .topo-node-rate-value { color: var(--success); }
+
+.topo-script .topo-node-icon,
+.topo-script .topo-node-rate-value { color: var(--warning); }
+
+.topo-context {
+  min-width: 280px;
+}
+
+.topo-script {
+  min-width: 260px;
+}
 
 .topo-rate-idle {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);

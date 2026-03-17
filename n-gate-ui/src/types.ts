@@ -2,20 +2,26 @@
 
 export interface TopologyNode {
   id: string;
-  type: 'gateway' | 'listener' | 'backend';
+  type: 'gateway' | 'listener' | 'backend' | 'context' | 'script';
   label: string;
   mode?: string;
   port?: number;
-  ssl?: boolean;
-  secured?: boolean;
+  ssl?: boolean | null;
+  secured?: boolean | null;
   members?: number;
   hasOauth?: boolean;
+  listener?: string;
+  contextPath?: string;
+  method?: string;
+  ruleMapping?: string | null;
+  script?: string;
+  context?: string;
 }
 
 export interface TopologyEdge {
   source: string;
   target: string;
-  type: 'inbound' | 'upstream';
+  type: 'inbound' | 'upstream' | 'context' | 'inbound-context' | 'script-exec';
   listener?: string;
 }
 
@@ -37,6 +43,7 @@ export interface MetricData {
   tags?: Record<string, string>;
   value?: number;
   count?: number;
+  min?: number;
   mean?: number;
   max?: number;
   totalTime?: number;
