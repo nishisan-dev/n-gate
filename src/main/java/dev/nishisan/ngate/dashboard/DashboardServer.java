@@ -29,10 +29,17 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
 import java.io.InputStream;
+
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.*;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 
 /**
  * Servidor Javalin dedicado ao dashboard de observabilidade.
@@ -50,6 +57,7 @@ public class DashboardServer {
 
     private static final Logger logger = LogManager.getLogger(DashboardServer.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String CLASSPATH_PREFIX = "/static/dashboard";
 
     private final DashboardConfiguration config;
     private final DashboardIpFilter ipFilter;
@@ -59,6 +67,7 @@ public class DashboardServer {
 
     private Javalin app;
     private ScheduledExecutorService scheduler;
+    private Path extractedDashboardDir;
 
     // WebSocket: clientes conectados para push de métricas
     private final Set<WsContext> wsClients = ConcurrentHashMap.newKeySet();
@@ -79,16 +88,26 @@ public class DashboardServer {
     public void start() {
         logger.info("Iniciando Dashboard de Observabilidade na porta {}...", config.getPort());
 
+        // Extrai assets do SPA do classpath para diretório temporário no filesystem.
+        // Necessário porque o Jetty ResourceHandler dentro de um Spring Boot fat JAR
+        // trata paths em BOOT-INF/classes como "alias" e recusa servi-los.
+        extractedDashboardDir = extractDashboardAssets();
+        final String dashboardPath = extractedDashboardDir.toAbsolutePath().toString();
+        logger.info("Dashboard SPA assets extraídos para: {}", dashboardPath);
+
         app = Javalin.create(javalinConfig -> {
             javalinConfig.startup.showJavalinBanner = false;
             javalinConfig.concurrency.useVirtualThreads = true;
 
-            // Serve React SPA de classpath (build output em static/dashboard/)
+            // Serve React SPA do filesystem (evita issue de alias do Jetty com nested JARs)
             javalinConfig.staticFiles.add(staticFileConfig -> {
-                staticFileConfig.directory = "/static/dashboard";
+                staticFileConfig.directory = dashboardPath;
                 staticFileConfig.hostedPath = "/";
-                staticFileConfig.location = Location.CLASSPATH;
+                staticFileConfig.location = Location.EXTERNAL;
             });
+
+            // SPA Fallback (React Router) — rotas sem extensão retornam index.html
+            javalinConfig.spaRoot.addFile("/", dashboardPath + "/index.html", Location.EXTERNAL);
 
             // CORS para desenvolvimento local
             javalinConfig.bundledPlugins.enableCors(cors -> {
@@ -125,22 +144,6 @@ public class DashboardServer {
                     wsClients.remove(ctx);
                 });
             });
-
-            // SPA Fallback (React Router) — qualquer rota não-API/não-asset retorna index.html
-            javalinConfig.routes.get("/*", ctx -> {
-                String path = ctx.path();
-                // Não interceptar rotas de API, WebSocket ou arquivos estáticos (com extensão)
-                if (!path.startsWith("/api/") && !path.startsWith("/ws/")
-                        && !path.matches(".*\\.[a-zA-Z0-9]+$")) {
-                    InputStream indexStream = getClass().getResourceAsStream("/static/dashboard/index.html");
-                    if (indexStream != null) {
-                        ctx.contentType("text/html");
-                        ctx.result(indexStream);
-                    } else {
-                        ctx.status(404).result("Dashboard UI not built. Run 'npm run build' in n-gate-ui/");
-                    }
-                }
-            });
         });
 
         // Start Javalin
@@ -175,6 +178,16 @@ public class DashboardServer {
 
         if (storage != null) {
             storage.shutdown();
+        }
+
+        // Limpa diretório temporário de assets extraídos
+        if (extractedDashboardDir != null) {
+            try {
+                deleteRecursively(extractedDashboardDir);
+                logger.info("Dashboard temp dir removido: {}", extractedDashboardDir);
+            } catch (IOException e) {
+                logger.warn("Falha ao remover dashboard temp dir: {}", e.getMessage());
+            }
         }
 
         logger.info("Dashboard de Observabilidade parado");
@@ -267,6 +280,155 @@ public class DashboardServer {
             });
         } catch (Exception e) {
             logger.warn("Dashboard WebSocket push falhou: {}", e.getMessage());
+        }
+    }
+
+    // ─── Asset Extraction (Spring Boot fat JAR workaround) ───────────────
+
+    /**
+     * Extrai os assets do React SPA do classpath para um diretório temporário.
+     * <p>
+     * Dentro de um Spring Boot fat JAR, os resources ficam em BOOT-INF/classes/
+     * e o Jetty ResourceHandler trata esses paths como "aliases", recusando
+     * servi-los por segurança. Extrair para o filesystem resolve o problema.
+     *
+     * @return Path do diretório temporário contendo os assets extraídos
+     */
+    private Path extractDashboardAssets() {
+        try {
+            Path tempDir = Files.createTempDirectory("ngate-dashboard-");
+            logger.debug("Extraindo dashboard SPA de classpath {} para {}", CLASSPATH_PREFIX, tempDir);
+
+            // Lista de arquivos conhecidos do SPA build output
+            // Usar resource listing via classpath URL
+            URL resourceUrl = getClass().getResource(CLASSPATH_PREFIX);
+            if (resourceUrl == null) {
+                throw new IOException("Dashboard SPA não encontrado no classpath: " + CLASSPATH_PREFIX);
+            }
+
+            // Extrai usando protocolo-agnóstico (funciona tanto em fat JAR quanto dev)
+            String protocol = resourceUrl.getProtocol();
+            logger.debug("Dashboard resource protocol: {}, URL: {}", protocol, resourceUrl);
+
+            if ("jar".equals(protocol) || "nested".equals(protocol)) {
+                // Dentro de um JAR: lê via classloader e copia manualmente
+                extractKnownAssets(tempDir);
+            } else {
+                // Desenvolvimento local: copia do filesystem
+                Path sourcePath = Path.of(resourceUrl.toURI());
+                copyDirectory(sourcePath, tempDir);
+            }
+
+            return tempDir;
+        } catch (IOException | URISyntaxException e) {
+            throw new RuntimeException("Falha ao extrair dashboard SPA do classpath", e);
+        }
+    }
+
+    /**
+     * Extrai assets conhecidos do SPA via classloader (seguro para fat JARs).
+     */
+    private void extractKnownAssets(Path targetDir) throws IOException {
+        // index.html
+        extractResource(CLASSPATH_PREFIX + "/index.html", targetDir.resolve("index.html"));
+
+        // Lista assets dinamicamente via classloader
+        Path assetsDir = targetDir.resolve("assets");
+        Files.createDirectories(assetsDir);
+
+        // Tenta listar o diretório de assets via classpath
+        URL assetsUrl = getClass().getResource(CLASSPATH_PREFIX + "/assets");
+        if (assetsUrl != null) {
+            // Para JARs, usa o approach de enumerar resources conhecidos
+            // Como o Vite gera hashes nos nomes, precisamos ler o index.html
+            // para descobrir os nomes dos assets
+            String indexContent = new String(
+                    getClass().getResourceAsStream(CLASSPATH_PREFIX + "/index.html").readAllBytes());
+
+            // Extrai nomes de assets referenciados no index.html
+            // Pattern: src="/assets/xxx" ou href="/assets/xxx"
+            java.util.regex.Pattern assetPattern =
+                    java.util.regex.Pattern.compile("(?:src|href)=\"/assets/([^\"]+)\"");
+            java.util.regex.Matcher matcher = assetPattern.matcher(indexContent);
+
+            while (matcher.find()) {
+                String assetName = matcher.group(1);
+                extractResource(CLASSPATH_PREFIX + "/assets/" + assetName,
+                        assetsDir.resolve(assetName));
+            }
+        }
+
+        // Tenta extrair favicon se existir
+        try {
+            extractResource(CLASSPATH_PREFIX + "/favicon.svg", targetDir.resolve("favicon.svg"));
+        } catch (IOException ignored) {
+            // favicon opcional
+        }
+
+        logger.info("Dashboard SPA: {} arquivos extraídos do classpath",
+                countFiles(targetDir));
+    }
+
+    /**
+     * Extrai um único resource do classpath para o filesystem.
+     */
+    private void extractResource(String classpathPath, Path target) throws IOException {
+        try (InputStream is = getClass().getResourceAsStream(classpathPath)) {
+            if (is == null) {
+                throw new IOException("Resource não encontrado: " + classpathPath);
+            }
+            Files.createDirectories(target.getParent());
+            Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+            logger.debug("Dashboard: extraído {} → {}", classpathPath, target);
+        }
+    }
+
+    /**
+     * Copia um diretório recursivamente (para desenvolvimento local).
+     */
+    private void copyDirectory(Path source, Path target) throws IOException {
+        try (Stream<Path> walk = Files.walk(source)) {
+            walk.forEach(src -> {
+                try {
+                    Path dest = target.resolve(source.relativize(src));
+                    if (Files.isDirectory(src)) {
+                        Files.createDirectories(dest);
+                    } else {
+                        Files.createDirectories(dest.getParent());
+                        Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Falha ao copiar: " + src, e);
+                }
+            });
+        }
+    }
+
+    /**
+     * Remove um diretório recursivamente.
+     */
+    private void deleteRecursively(Path dir) throws IOException {
+        if (!Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            logger.debug("Falha ao deletar {}: {}", p, e.getMessage());
+                        }
+                    });
+        }
+    }
+
+    /**
+     * Conta arquivos em um diretório recursivamente.
+     */
+    private long countFiles(Path dir) {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            return walk.filter(Files::isRegularFile).count();
+        } catch (IOException e) {
+            return -1;
         }
     }
 }
