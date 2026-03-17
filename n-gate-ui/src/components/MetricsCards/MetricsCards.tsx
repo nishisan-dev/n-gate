@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   AreaChart,
   Area,
@@ -6,7 +6,7 @@ import {
   Tooltip,
   XAxis,
 } from 'recharts';
-import { Activity, Gauge, AlertTriangle, Zap, ChevronDown } from 'lucide-react';
+import { Activity, Gauge, AlertTriangle, ChevronDown, TrendingUp } from 'lucide-react';
 import { api } from '../../api';
 import type { MetricData } from '../../types';
 import './MetricsCards.css';
@@ -22,6 +22,7 @@ interface CardData {
   icon: React.ReactNode;
   color: 'accent' | 'success' | 'warning' | 'error';
   metricName: string;
+  showAsRate?: boolean;
 }
 
 interface SparklinePoint {
@@ -29,17 +30,50 @@ interface SparklinePoint {
   value: number;
 }
 
+// ─── Mapa estático: label → { metricName, showAsRate } ────────
+// Usado pelo sparkline para evitar dependência de `cards` (que muda a cada push)
+const CARD_META: Record<string, { metricName: string; showAsRate: boolean }> = {
+  'Requests':     { metricName: 'ngate.requests.total', showAsRate: true },
+  'Req/s':        { metricName: 'ngate.requests.total', showAsRate: true },
+  'Latência Média': { metricName: 'ngate.request.duration', showAsRate: false },
+  'Erros 5xx':    { metricName: 'ngate.request.errors', showAsRate: true },
+  'Rate Limited': { metricName: 'ngate.ratelimit.total', showAsRate: true },
+  'Threads':      { metricName: 'jvm.threads.live', showAsRate: false },
+};
+
+const COLOR_MAP: Record<string, string> = {
+  accent: '#748FFC',
+  success: '#51CF66',
+  warning: '#FCC419',
+  error: '#FF6B6B',
+};
+
 export function MetricsCards({ metrics }: Props) {
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [sparkData, setSparkData] = useState<SparklinePoint[]>([]);
   const [sparkLoading, setSparkLoading] = useState(false);
+  const [requestRate, setRequestRate] = useState(0);
+  const prevRequestsRef = useRef<{ count: number; time: number } | null>(null);
 
+  // ─── Calcula req/s a partir do delta do contador ────────────
+  const totalRequests = sumAllMetricValues(metrics, 'ngate.requests.total', 'value');
+  useEffect(() => {
+    const now = Date.now();
+    if (prevRequestsRef.current !== null) {
+      const dt = (now - prevRequestsRef.current.time) / 1000;
+      if (dt > 0) {
+        const delta = totalRequests - prevRequestsRef.current.count;
+        setRequestRate(Math.max(0, Math.round((delta / dt) * 10) / 10));
+      }
+    }
+    prevRequestsRef.current = { count: totalRequests, time: now };
+  }, [totalRequests]);
+
+  // ─── Cards ─────────────────────────────────────────────────
   const cards = useMemo<CardData[]>(() => {
-    const totalRequests = findMetricValue(metrics, 'ngate.requests.total', 'count') ?? 0;
     const meanLatency = findMetricValue(metrics, 'ngate.request.duration', 'mean') ?? 0;
-    const maxLatency = findMetricValue(metrics, 'ngate.request.duration', 'max') ?? 0;
-    const errorCount = findMetricValue(metrics, 'ngate.requests.total', 'count', { status: '5' }) ?? 0;
-    const rateLimitRejects = findMetricValue(metrics, 'ngate.ratelimit.total', 'count', { result: 'REJECTED' }) ?? 0;
+    const errorCount = sumMetricValues(metrics, 'ngate.requests.total', 'value', { status: '5' });
+    const rateLimitRejects = sumMetricValues(metrics, 'ngate.ratelimit.total', 'value', { result: 'REJECTED' });
     const activeThreads = findMetricValue(metrics, 'jvm.threads.live', 'value') ?? 0;
 
     return [
@@ -50,6 +84,16 @@ export function MetricsCards({ metrics }: Props) {
         icon: <Activity size={16} />,
         color: 'accent' as const,
         metricName: 'ngate.requests.total',
+        showAsRate: true,
+      },
+      {
+        label: 'Req/s',
+        value: requestRate < 0.1 && requestRate > 0 ? '<0.1' : formatNumber(requestRate),
+        unit: 'req/s',
+        icon: <TrendingUp size={16} />,
+        color: requestRate > 0 ? 'success' as const : 'accent' as const,
+        metricName: 'ngate.requests.total',
+        showAsRate: true,
       },
       {
         label: 'Latência Média',
@@ -60,20 +104,13 @@ export function MetricsCards({ metrics }: Props) {
         metricName: 'ngate.request.duration',
       },
       {
-        label: 'Latência Max',
-        value: formatNumber(maxLatency),
-        unit: 'ms',
-        icon: <Zap size={16} />,
-        color: maxLatency > 2000 ? 'error' as const : 'accent' as const,
-        metricName: 'ngate.request.duration',
-      },
-      {
         label: 'Erros 5xx',
         value: formatNumber(errorCount),
         unit: 'total',
         icon: <AlertTriangle size={16} />,
         color: errorCount > 0 ? 'error' as const : 'success' as const,
-        metricName: 'ngate.requests.total',
+        metricName: 'ngate.request.errors',
+        showAsRate: true,
       },
       {
         label: 'Rate Limited',
@@ -82,6 +119,7 @@ export function MetricsCards({ metrics }: Props) {
         icon: <AlertTriangle size={16} />,
         color: rateLimitRejects > 0 ? 'warning' as const : 'success' as const,
         metricName: 'ngate.ratelimit.total',
+        showAsRate: true,
       },
       {
         label: 'Threads',
@@ -92,72 +130,86 @@ export function MetricsCards({ metrics }: Props) {
         metricName: 'jvm.threads.live',
       },
     ];
-  }, [metrics]);
+  }, [metrics, totalRequests, requestRate]);
 
-  // Fetch sparkline data when a card is expanded
+  // ─── Sparkline fetch (estável, não depende de `cards`) ─────
+  const fetchSparkline = useCallback(async (label: string) => {
+    const meta = CARD_META[label];
+    if (!meta) return;
+
+    setSparkLoading(true);
+    try {
+      const now = new Date();
+      const from = new Date(now.getTime() - 3600 * 1000);
+      const response = await api.getMetricHistory(
+        meta.metricName,
+        from.toISOString(),
+        now.toISOString()
+      );
+      const records = response?.data || response || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let points: SparklinePoint[] = records.map((r: any) => {
+        const ts = r.timestamp || r.bucket_ts;
+        return {
+          time: new Date(ts).toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          value: Math.round((r.avg ?? r.val_avg ?? r.value ?? 0) * 100) / 100,
+        };
+      });
+
+      // Para counters, computa rate (delta entre pontos consecutivos)
+      if (meta.showAsRate && points.length > 1) {
+        const ratePoints: SparklinePoint[] = [];
+        for (let i = 1; i < points.length; i++) {
+          const delta = points[i].value - points[i - 1].value;
+          ratePoints.push({
+            time: points[i].time,
+            value: Math.max(0, Math.round(delta * 100) / 100),
+          });
+        }
+        points = ratePoints;
+      }
+
+      setSparkData(points);
+    } catch {
+      setSparkData([]);
+    } finally {
+      setSparkLoading(false);
+    }
+  }, []);
+
+  // Só re-executa quando o card expandido muda (não a cada push de métricas)
   useEffect(() => {
     if (!expandedCard) {
       setSparkData([]);
       return;
     }
 
-    const fetchSparkline = async () => {
-      setSparkLoading(true);
-      try {
-        const now = new Date();
-        const from = new Date(now.getTime() - 3600 * 1000); // last 1h
-        const response = await api.getMetricHistory(
-          expandedCard,
-          from.toISOString(),
-          now.toISOString()
-        );
-        // Handle new RRD format: { tier, points, data: [...] }
-        const records = response?.data || response || [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const points: SparklinePoint[] = records.map((r: any) => {
-          const ts = r.timestamp || r.bucket_ts;
-          return {
-            time: new Date(ts).toLocaleTimeString('pt-BR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            value: Math.round((r.avg ?? r.val_avg ?? r.value ?? 0) * 100) / 100,
-          };
-        });
-        setSparkData(points);
-      } catch {
-        setSparkData([]);
-      } finally {
-        setSparkLoading(false);
-      }
-    };
-
-    fetchSparkline();
-    const id = setInterval(fetchSparkline, 30000);
+    fetchSparkline(expandedCard);
+    const id = setInterval(() => fetchSparkline(expandedCard), 30000);
     return () => clearInterval(id);
-  }, [expandedCard]);
+  }, [expandedCard, fetchSparkline]);
 
-  const handleCardClick = (metricName: string) => {
-    setExpandedCard((prev) => (prev === metricName ? null : metricName));
+  // ─── Handlers ──────────────────────────────────────────────
+  const handleCardClick = (label: string) => {
+    setExpandedCard((prev) => (prev === label ? null : label));
   };
 
-  const colorMap: Record<string, string> = {
-    accent: '#748FFC',
-    success: '#51CF66',
-    warning: '#FCC419',
-    error: '#FF6B6B',
-  };
+  // Cor do card expandido
+  const expandedColor = cards.find((c) => c.label === expandedCard)?.color ?? 'accent';
 
   return (
     <div className="metrics-cards-container">
       <div className="metrics-cards">
         {cards.map((card) => {
-          const isExpanded = expandedCard === card.metricName;
+          const isExpanded = expandedCard === card.label;
           return (
             <div
               key={card.label}
               className={`metric-card metric-card-${card.color} ${isExpanded ? 'metric-card-expanded' : ''}`}
-              onClick={() => handleCardClick(card.metricName)}
+              onClick={() => handleCardClick(card.label)}
             >
               <div className="metric-card-header">
                 <span className="metric-card-icon">{card.icon}</span>
@@ -195,12 +247,12 @@ export function MetricsCards({ metrics }: Props) {
                     <linearGradient id="sparkGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop
                         offset="5%"
-                        stopColor={colorMap[cards.find(c => c.metricName === expandedCard)?.color ?? 'accent']}
+                        stopColor={COLOR_MAP[expandedColor]}
                         stopOpacity={0.3}
                       />
                       <stop
                         offset="95%"
-                        stopColor={colorMap[cards.find(c => c.metricName === expandedCard)?.color ?? 'accent']}
+                        stopColor={COLOR_MAP[expandedColor]}
                         stopOpacity={0}
                       />
                     </linearGradient>
@@ -229,7 +281,7 @@ export function MetricsCards({ metrics }: Props) {
                   <Area
                     type="monotone"
                     dataKey="value"
-                    stroke={colorMap[cards.find(c => c.metricName === expandedCard)?.color ?? 'accent']}
+                    stroke={COLOR_MAP[expandedColor]}
                     strokeWidth={2}
                     fill="url(#sparkGradient)"
                     dot={false}
@@ -267,6 +319,45 @@ function findMetricValue(
     if (field === 'max' && data.max !== undefined) return data.max;
   }
   return undefined;
+}
+
+function sumMetricValues(
+  metrics: Record<string, MetricData>,
+  prefix: string,
+  field: 'value' | 'count' | 'mean' | 'max',
+  tagFilter: Record<string, string>
+): number {
+  let sum = 0;
+  for (const [key, data] of Object.entries(metrics)) {
+    if (!key.startsWith(prefix)) continue;
+    if (data.tags) {
+      const matches = Object.entries(tagFilter).every(
+        ([k, v]) => data.tags?.[k]?.startsWith(v)
+      );
+      if (!matches) continue;
+    } else {
+      continue;
+    }
+    if (field === 'value' && data.value !== undefined) sum += data.value;
+    if (field === 'count' && data.count !== undefined) sum += data.count;
+    if (field === 'mean' && data.mean !== undefined) sum += data.mean;
+    if (field === 'max' && data.max !== undefined) sum += data.max;
+  }
+  return sum;
+}
+
+function sumAllMetricValues(
+  metrics: Record<string, MetricData>,
+  prefix: string,
+  field: 'value' | 'count'
+): number {
+  let sum = 0;
+  for (const [key, data] of Object.entries(metrics)) {
+    if (!key.startsWith(prefix)) continue;
+    if (field === 'value' && data.value !== undefined) sum += data.value;
+    if (field === 'count' && data.count !== undefined) sum += data.count;
+  }
+  return sum;
 }
 
 function formatNumber(n: number): string {
