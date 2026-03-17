@@ -90,7 +90,7 @@ function App() {
         <section className="main-content">
           {activeTab === 'topology' && (
             <ReactFlowProvider>
-              <TopologyView data={topology} loading={topoLoading} />
+              <TopologyView data={topology} loading={topoLoading} metrics={metrics} />
             </ReactFlowProvider>
           )}
 
