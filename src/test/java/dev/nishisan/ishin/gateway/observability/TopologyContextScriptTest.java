@@ -91,7 +91,7 @@ class TopologyContextScriptTest {
         MetricsCollectorService collector = new MetricsCollectorService(new SimpleMeterRegistry(), storage);
 
         DashboardConfiguration dashboardConfig = new DashboardConfiguration();
-        apiRoutes = new DashboardApiRoutes(collector, storage, serverConfig, dashboardConfig);
+        apiRoutes = new DashboardApiRoutes(collector, storage, serverConfig, dashboardConfig, null);
     }
 
     @SuppressWarnings("unchecked")

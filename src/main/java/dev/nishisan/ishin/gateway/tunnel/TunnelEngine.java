@@ -27,8 +27,11 @@ import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * Core do Tunnel Mode — gerencia listeners TCP dinâmicos e faz pipe bidirecional.
@@ -58,6 +61,11 @@ public class TunnelEngine {
     private final ConcurrentHashMap<Integer, Thread> acceptorThreads = new ConcurrentHashMap<>();
     private final AtomicInteger totalActiveConnections = new AtomicInteger(0);
 
+    // Callbacks de eventos para o dashboard event bridge
+    private Consumer<Integer> onListenerOpened;
+    private Consumer<Integer> onListenerClosed;
+    private TriConsumer<Integer, String, String> onConnectError; // (vPort, backend, errorType)
+
     private volatile boolean running = false;
 
     public TunnelEngine(TunnelRegistry registry, TunnelMetrics metrics, String bindAddress) {
@@ -70,6 +78,28 @@ public class TunnelEngine {
         this.running = true;
         metrics.registerGlobalActiveConnections(totalActiveConnections);
         logger.info("TunnelEngine started — bindAddress: {}", bindAddress);
+    }
+
+    // ─── Callback Setters ────────────────────────────────────────────────
+
+    public void setOnListenerOpened(Consumer<Integer> onListenerOpened) {
+        this.onListenerOpened = onListenerOpened;
+    }
+
+    public void setOnListenerClosed(Consumer<Integer> onListenerClosed) {
+        this.onListenerClosed = onListenerClosed;
+    }
+
+    public void setOnConnectError(TriConsumer<Integer, String, String> onConnectError) {
+        this.onConnectError = onConnectError;
+    }
+
+    /**
+     * Functional interface para callbacks com 3 parâmetros.
+     */
+    @FunctionalInterface
+    public interface TriConsumer<A, B, C> {
+        void accept(A a, B b, C c);
     }
 
     public void stop() {
@@ -109,6 +139,9 @@ public class TunnelEngine {
             ssc.bind(new InetSocketAddress(bindAddress, virtualPort));
             listeners.put(virtualPort, ssc);
             metrics.listenerOpened();
+            if (onListenerOpened != null) {
+                onListenerOpened.accept(virtualPort);
+            }
 
             // Acceptor thread para este listener
             Thread acceptor = Thread.ofVirtual()
@@ -132,6 +165,9 @@ public class TunnelEngine {
             try {
                 ssc.close();
                 metrics.listenerClosed();
+                if (onListenerClosed != null) {
+                    onListenerClosed.accept(virtualPort);
+                }
                 logger.info("Listener closed — vPort:{}", virtualPort);
             } catch (IOException e) {
                 logger.error("Error closing listener vPort:{}", virtualPort, e);
@@ -185,7 +221,12 @@ public class TunnelEngine {
             int retries = 0;
 
             while (backendChannel == null && retries < MAX_RETRIES_PER_CONNECTION) {
+                // ─── Routing duration: mede lookup do grupo + seleção de membro ───
+                long routingStart = System.nanoTime();
                 selected = group.selectNext();
+                long routingDurationMs = (System.nanoTime() - routingStart) / 1_000_000;
+                metrics.recordRoutingDuration(virtualPort, routingDurationMs);
+
                 if (selected == null) {
                     logger.warn("No active backends for vPort:{} — closing client", virtualPort);
                     clientChannel.close();
@@ -200,6 +241,9 @@ public class TunnelEngine {
                 } catch (ConnectException e) {
                     // Conexão recusada — remoção imediata (Camada 1)
                     metrics.recordConnectError(virtualPort, selected.getKey(), "refused");
+                    if (onConnectError != null) {
+                        onConnectError.accept(virtualPort, selected.getKey(), "refused");
+                    }
                     logger.warn("Connection refused to {} — immediate removal from vPort:{}",
                             selected.getKey(), virtualPort);
                     registry.removeMemberImmediate(virtualPort, selected.getKey(), "io_exception");
@@ -207,6 +251,9 @@ public class TunnelEngine {
                     retries++;
                 } catch (NoRouteToHostException e) {
                     metrics.recordConnectError(virtualPort, selected.getKey(), "no_route");
+                    if (onConnectError != null) {
+                        onConnectError.accept(virtualPort, selected.getKey(), "no_route");
+                    }
                     logger.warn("No route to {} — immediate removal from vPort:{}",
                             selected.getKey(), virtualPort);
                     registry.removeMemberImmediate(virtualPort, selected.getKey(), "io_exception");
@@ -214,6 +261,9 @@ public class TunnelEngine {
                     retries++;
                 } catch (SocketTimeoutException e) {
                     metrics.recordConnectError(virtualPort, selected.getKey(), "timeout");
+                    if (onConnectError != null) {
+                        onConnectError.accept(virtualPort, selected.getKey(), "timeout");
+                    }
                     int failures = selected.getConsecutiveFailures().incrementAndGet();
                     if (failures >= MAX_CONSECUTIVE_FAILURES) {
                         logger.warn("Connect timeout threshold reached for {} — removing from vPort:{}",
@@ -340,5 +390,19 @@ public class TunnelEngine {
 
     public int getListenerCount() {
         return listeners.size();
+    }
+
+    /**
+     * Retorna o conjunto de portas virtuais com listeners abertos.
+     */
+    public Set<Integer> getOpenListenerPorts() {
+        return Collections.unmodifiableSet(listeners.keySet());
+    }
+
+    /**
+     * Verifica se há listener aberto para a porta virtual.
+     */
+    public boolean isListenerOpen(int virtualPort) {
+        return listeners.containsKey(virtualPort);
     }
 }

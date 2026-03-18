@@ -19,8 +19,11 @@ package dev.nishisan.ishin.gateway.dashboard.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.nishisan.ishin.gateway.configuration.DashboardConfiguration;
 import dev.nishisan.ishin.gateway.configuration.ServerConfiguration;
+import dev.nishisan.ishin.gateway.dashboard.api.TunnelRuntimeSnapshot;
+import dev.nishisan.ishin.gateway.dashboard.api.TunnelRuntimeSnapshotFactory;
 import dev.nishisan.ishin.gateway.dashboard.collector.MetricsCollectorService;
 import dev.nishisan.ishin.gateway.dashboard.storage.DashboardStorageService;
+import dev.nishisan.ishin.gateway.tunnel.TunnelService;
 import io.javalin.router.JavalinDefaultRoutingApi;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -52,16 +55,19 @@ public class DashboardApiRoutes {
     private final DashboardStorageService storage;
     private final ServerConfiguration serverConfig;
     private final DashboardConfiguration dashboardConfig;
+    private final TunnelService tunnelService; // nullable
     private final OkHttpClient httpClient;
 
     public DashboardApiRoutes(MetricsCollectorService metricsCollector,
                               DashboardStorageService storage,
                               ServerConfiguration serverConfig,
-                              DashboardConfiguration dashboardConfig) {
+                              DashboardConfiguration dashboardConfig,
+                              TunnelService tunnelService) {
         this.metricsCollector = metricsCollector;
         this.storage = storage;
         this.serverConfig = serverConfig;
         this.dashboardConfig = dashboardConfig;
+        this.tunnelService = tunnelService;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -133,7 +139,11 @@ public class DashboardApiRoutes {
 
         // ─── Topologia ──────────────────────────────────────────
         routes.get("/api/v1/topology", ctx -> {
-            ctx.json(buildTopology());
+            if (serverConfig.isTunnelMode()) {
+                ctx.json(buildTunnelTopology());
+            } else {
+                ctx.json(buildTopology());
+            }
         });
 
         // ─── Traces (proxy Zipkin) ──────────────────────────────
@@ -168,6 +178,15 @@ public class DashboardApiRoutes {
         routes.get("/api/v1/events", ctx -> {
             int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(100);
             ctx.json(storage.getRecentEvents(limit));
+        });
+
+        // ─── Tunnel Runtime ──────────────────────────────────────
+        routes.get("/api/v1/tunnel/runtime", ctx -> {
+            if (!serverConfig.isTunnelMode()) {
+                ctx.status(404).json(Map.of("error", "Disponível apenas em tunnel mode"));
+                return;
+            }
+            ctx.json(TunnelRuntimeSnapshotFactory.create(tunnelService));
         });
 
         logger.info("Dashboard API routes registradas: /api/v1/*");
@@ -314,6 +333,89 @@ public class DashboardApiRoutes {
         return topology;
     }
 
+    /**
+     * Constrói topologia L4 para tunnel mode a partir do runtime vivo.
+     */
+    private Map<String, Object> buildTunnelTopology() {
+        Map<String, Object> topology = new LinkedHashMap<>();
+
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+
+        // Nó central: Tunnel
+        nodes.add(Map.of(
+                "id", "ishin-tunnel",
+                "type", "tunnel",
+                "label", "ishin-tunnel",
+                "mode", "tunnel"
+        ));
+
+        TunnelRuntimeSnapshot snapshot = TunnelRuntimeSnapshotFactory.create(tunnelService);
+
+        for (TunnelRuntimeSnapshot.VirtualPortSnapshot vpSnapshot : snapshot.virtualPorts()) {
+            String vpId = "vport:" + vpSnapshot.virtualPort();
+
+            // Nó de porta virtual
+            Map<String, Object> vpNode = new LinkedHashMap<>();
+            vpNode.put("id", vpId);
+            vpNode.put("type", "virtual-port");
+            vpNode.put("label", "vPort:" + vpSnapshot.virtualPort());
+            vpNode.put("port", vpSnapshot.virtualPort());
+            vpNode.put("listenerOpen", vpSnapshot.listenerOpen());
+            vpNode.put("activeMembers", vpSnapshot.activeMembers());
+            vpNode.put("standbyMembers", vpSnapshot.standbyMembers());
+            vpNode.put("drainingMembers", vpSnapshot.drainingMembers());
+            nodes.add(vpNode);
+
+            // Edge: virtual-port → tunnel
+            edges.add(Map.of(
+                    "source", vpId,
+                    "target", "ishin-tunnel",
+                    "type", "tunnel-link"
+            ));
+
+            // Nós de members
+            for (TunnelRuntimeSnapshot.TunnelMemberSnapshot memberSnapshot : vpSnapshot.members()) {
+                String memberId = "member:" + vpSnapshot.virtualPort() + ":" + memberSnapshot.backendKey();
+
+                Map<String, Object> memberNode = new LinkedHashMap<>();
+                memberNode.put("id", memberId);
+                memberNode.put("type", "tunnel-member");
+                memberNode.put("label", memberSnapshot.backendKey());
+                memberNode.put("nodeId", memberSnapshot.nodeId());
+                memberNode.put("host", memberSnapshot.host());
+                memberNode.put("realPort", memberSnapshot.realPort());
+                memberNode.put("status", memberSnapshot.status());
+                memberNode.put("weight", memberSnapshot.weight());
+                memberNode.put("activeConnections", memberSnapshot.activeConnections());
+                memberNode.put("keepaliveAgeSeconds", memberSnapshot.keepaliveAgeSeconds());
+                nodes.add(memberNode);
+
+                // Edge: tunnel → member
+                edges.add(Map.of(
+                        "source", "ishin-tunnel",
+                        "target", memberId,
+                        "type", "tunnel-link"
+                ));
+            }
+        }
+
+        // Cluster info
+        if (serverConfig.getCluster() != null && serverConfig.getCluster().isEnabled()) {
+            Map<String, Object> clusterInfo = new LinkedHashMap<>();
+            clusterInfo.put("enabled", true);
+            clusterInfo.put("nodeId", serverConfig.getCluster().getNodeId());
+            clusterInfo.put("clusterName", serverConfig.getCluster().getClusterName());
+            topology.put("cluster", clusterInfo);
+        }
+
+        topology.put("nodes", nodes);
+        topology.put("edges", edges);
+        topology.put("mode", "tunnel");
+
+        return topology;
+    }
+
     // ─── Health Builder ─────────────────────────────────────────────────
 
     private Map<String, Object> buildHealthInfo() {
@@ -340,6 +442,18 @@ public class DashboardApiRoutes {
                 .mapToInt(ep -> ep.getBackends() != null ? ep.getBackends().size() : 0)
                 .sum();
         health.put("backends", backendCount);
+
+        // Campos específicos do tunnel mode
+        if (serverConfig.isTunnelMode() && tunnelService != null) {
+            TunnelRuntimeSnapshot snapshot = TunnelRuntimeSnapshotFactory.create(tunnelService);
+            health.put("virtualListeners", snapshot.listeners());
+            health.put("tunnelGroups", snapshot.groups());
+            health.put("tunnelMembers", snapshot.members());
+            health.put("activeConnections", snapshot.activeConnections());
+            health.put("dashboardCapabilities", List.of("metrics", "topology", "events"));
+        } else {
+            health.put("dashboardCapabilities", List.of("metrics", "topology", "events", "traces"));
+        }
 
         return health;
     }

@@ -187,4 +187,20 @@ public class TunnelMetrics {
     public void listenerClosed() {
         activeListenerPorts.decrementAndGet();
     }
+
+    // ─── Routing Duration ───────────────────────────────────────────────
+
+    /**
+     * Registra a duração do roteamento interno (lookup do grupo + seleção de membro)
+     * antes do handshake TCP com o backend.
+     */
+    public void recordRoutingDuration(int virtualPort, long durationMs) {
+        String key = "routing:" + virtualPort;
+        timerCache.computeIfAbsent(key, k ->
+                Timer.builder("ishin.tunnel.routing.duration.seconds")
+                        .description("Duração do roteamento interno (lookup + seleção)")
+                        .tag("virtual_port", String.valueOf(virtualPort))
+                        .register(registry)
+        ).record(Duration.ofMillis(durationMs));
+    }
 }
