@@ -36,6 +36,12 @@ export const api = {
     return res.json();
   },
 
+  async getTunnelRuntime() {
+    const res = await fetch(`${API_BASE}/tunnel/runtime`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
   async getTraces(params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     const res = await fetch(`${API_BASE}/traces${query}`);

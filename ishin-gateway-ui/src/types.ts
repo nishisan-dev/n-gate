@@ -2,7 +2,7 @@
 
 export interface TopologyNode {
   id: string;
-  type: 'gateway' | 'listener' | 'backend' | 'context' | 'script';
+  type: 'gateway' | 'listener' | 'backend' | 'context' | 'script' | 'tunnel' | 'virtual-port' | 'tunnel-member';
   label: string;
   mode?: string;
   port?: number;
@@ -16,12 +16,24 @@ export interface TopologyNode {
   ruleMapping?: string | null;
   script?: string;
   context?: string;
+  // Tunnel specific
+  listenerOpen?: boolean;
+  activeMembers?: number;
+  standbyMembers?: number;
+  drainingMembers?: number;
+  nodeId?: string;
+  host?: string;
+  realPort?: number;
+  status?: string;
+  weight?: number;
+  activeConnections?: number;
+  keepaliveAgeSeconds?: number;
 }
 
 export interface TopologyEdge {
   source: string;
   target: string;
-  type: 'inbound' | 'upstream' | 'context' | 'inbound-context' | 'script-exec';
+  type: 'inbound' | 'upstream' | 'context' | 'inbound-context' | 'script-exec' | 'tunnel-link';
   listener?: string;
 }
 
@@ -72,4 +84,41 @@ export interface HealthInfo {
   uptimeMs: number;
   listeners: number;
   backends: number;
+  // Tunnel-specific
+  virtualListeners?: number;
+  tunnelGroups?: number;
+  tunnelMembers?: number;
+  activeConnections?: number;
+  dashboardCapabilities?: string[];
+}
+
+// ─── Tunnel Runtime Types ─────────────────────────────────────────
+
+export interface TunnelMemberSnapshot {
+  backendKey: string;
+  nodeId: string;
+  host: string;
+  realPort: number;
+  status: string;
+  weight: number;
+  activeConnections: number;
+  keepaliveAgeSeconds: number;
+}
+
+export interface VirtualPortSnapshot {
+  virtualPort: number;
+  listenerOpen: boolean;
+  activeMembers: number;
+  standbyMembers: number;
+  drainingMembers: number;
+  members: TunnelMemberSnapshot[];
+}
+
+export interface TunnelRuntimeSnapshot {
+  mode: string;
+  listeners: number;
+  groups: number;
+  members: number;
+  activeConnections: number;
+  virtualPorts: VirtualPortSnapshot[];
 }

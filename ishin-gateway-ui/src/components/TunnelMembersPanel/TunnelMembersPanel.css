@@ -1,0 +1,129 @@
+.tunnel-members-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tunnel-members-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--color-text-muted, #909296);
+  font-size: 13px;
+}
+
+.tunnel-vport-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tunnel-vport-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tunnel-vport-label {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: #C1C2C5;
+}
+
+.tunnel-vport-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.tunnel-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.tunnel-badge-success {
+  background: rgba(81, 207, 102, 0.15);
+  color: #51CF66;
+}
+
+.tunnel-badge-error {
+  background: rgba(255, 107, 107, 0.15);
+  color: #FF6B6B;
+}
+
+.tunnel-badge-info {
+  background: rgba(116, 143, 252, 0.15);
+  color: #748FFC;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.tunnel-members-table-wrapper {
+  overflow-x: auto;
+}
+
+.tunnel-members-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.tunnel-members-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #909296;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tunnel-members-table td {
+  padding: 8px 12px;
+  color: #C1C2C5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.tunnel-member-row:last-child td {
+  border-bottom: none;
+}
+
+.tunnel-member-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tunnel-status-chip {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.tunnel-status-active {
+  background: rgba(81, 207, 102, 0.15);
+  color: #51CF66;
+}
+
+.tunnel-status-standby {
+  background: rgba(252, 196, 25, 0.15);
+  color: #FCC419;
+}
+
+.tunnel-status-draining {
+  background: rgba(255, 107, 107, 0.15);
+  color: #FF6B6B;
+}
+
+.mono {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
