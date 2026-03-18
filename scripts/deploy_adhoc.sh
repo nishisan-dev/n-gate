@@ -3,9 +3,10 @@
 # deploy_adhoc.sh — Build & deploy ishin-gateway JAR para VMs Vagrant (ad-hoc)
 #
 # Uso:
-#   ./scripts/deploy_adhoc.sh              # build + deploy em ishin-1 e ishin-2
+#   ./scripts/deploy_adhoc.sh              # build + deploy em tunnel-1, ishin-1 e ishin-2
 #   ./scripts/deploy_adhoc.sh --skip-build  # pula o build, usa o último JAR
 #   ./scripts/deploy_adhoc.sh ishin-1       # deploy apenas em ishin-1
+#   ./scripts/deploy_adhoc.sh tunnel-1      # deploy apenas no tunnel
 #   ./scripts/deploy_adhoc.sh --skip-build ishin-2  # sem build, apenas ishin-2
 ###############################################################################
 set -euo pipefail
@@ -16,7 +17,7 @@ VAGRANT_DIR="${PROJECT_ROOT}/ishin-gateway-test-case"
 JAR_SOURCE="${PROJECT_ROOT}/target/ishin-gateway-1.0-SNAPSHOT.jar"
 REMOTE_JAR="/opt/ishin-gateway/ishin-gateway.jar"
 SERVICE_NAME="ishin-gateway"
-ALL_VMS=("ishin-1" "ishin-2")
+ALL_VMS=("tunnel-1" "ishin-1" "ishin-2")
 
 # ─── Cores ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -37,7 +38,7 @@ TARGET_VMS=()
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=true ;;
-    ishin-*)      TARGET_VMS+=("$arg") ;;
+    ishin-*|tunnel-*)  TARGET_VMS+=("$arg") ;;
     *)            log_error "Argumento desconhecido: $arg"; exit 1 ;;
   esac
 done
