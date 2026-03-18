@@ -49,6 +49,9 @@ public class DashboardService {
     @Autowired
     private MeterRegistry meterRegistry;
 
+    @Autowired(required = false)
+    private dev.nishisan.ishin.gateway.tunnel.TunnelService tunnelService;
+
     private DashboardServer dashboardServer;
 
     @Order(40)
@@ -67,8 +70,21 @@ public class DashboardService {
         }
 
         try {
-            dashboardServer = new DashboardServer(dashboardConfig, serverConfig, meterRegistry);
+            // Criar event bridge se tunnel está ativo
+            TunnelDashboardEventBridge eventBridge = null;
+            if (tunnelService != null && serverConfig.isTunnelMode()) {
+                // O DashboardServer criará o storage, precisamos do bridge depois
+                // Por ora, criamos com null e conectamos após o server criar o storage
+            }
+
+            dashboardServer = new DashboardServer(dashboardConfig, serverConfig, meterRegistry, tunnelService);
             dashboardServer.start();
+
+            // Conectar event bridge ao tunnel
+            if (tunnelService != null && serverConfig.isTunnelMode()) {
+                eventBridge = new TunnelDashboardEventBridge(dashboardServer.getStorage());
+                tunnelService.setEventBridge(eventBridge);
+            }
         } catch (Exception e) {
             logger.error("Falha ao iniciar Dashboard de Observabilidade", e);
         }

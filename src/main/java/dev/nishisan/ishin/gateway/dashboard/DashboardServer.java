@@ -74,12 +74,20 @@ public class DashboardServer {
 
     public DashboardServer(DashboardConfiguration config,
                            ServerConfiguration serverConfig,
-                           MeterRegistry meterRegistry) {
+                           MeterRegistry meterRegistry,
+                           dev.nishisan.ishin.gateway.tunnel.TunnelService tunnelService) {
         this.config = config;
         this.ipFilter = new DashboardIpFilter(config.getAllowedIps());
         this.storage = new DashboardStorageService(config.getStorage());
         this.metricsCollector = new MetricsCollectorService(meterRegistry, storage);
-        this.apiRoutes = new DashboardApiRoutes(metricsCollector, storage, serverConfig, config);
+        this.apiRoutes = new DashboardApiRoutes(metricsCollector, storage, serverConfig, config, tunnelService);
+    }
+
+    /**
+     * Acesso ao storage para criação do event bridge.
+     */
+    public DashboardStorageService getStorage() {
+        return storage;
     }
 
     /**

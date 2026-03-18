@@ -56,6 +56,10 @@ public class TunnelService {
 
     private TunnelRegistry tunnelRegistry;
     private TunnelEngine tunnelEngine;
+    private volatile boolean running = false;
+
+    // Bridge de eventos para o dashboard (set externamente pelo DashboardService)
+    private dev.nishisan.ishin.gateway.dashboard.TunnelDashboardEventBridge eventBridge;
 
     @Order(30) // Mesmo slot do EndpointManager
     @EventListener(ApplicationReadyEvent.class)
@@ -99,6 +103,11 @@ public class TunnelService {
         // Inicializar TunnelEngine
         this.tunnelEngine = new TunnelEngine(tunnelRegistry, tunnelMetrics, tunnelConfig.getBindAddress());
 
+        // Conectar event bridge se disponível
+        if (eventBridge != null) {
+            connectEventBridge();
+        }
+
         // Conectar callbacks de lifecycle
         tunnelRegistry.setOnGroupCreated(vPort -> {
             logger.info("VirtualPortGroup created — opening listener on vPort:{}", vPort);
@@ -114,12 +123,15 @@ public class TunnelService {
         tunnelEngine.start();
         tunnelRegistry.start();
 
+        this.running = true;
+
         logger.info("Tunnel Mode fully initialized — LB algorithm: {}, missedKeepalives: {}, drainTimeout: {}s",
                 tunnelConfig.getLoadBalancing(), tunnelConfig.getMissedKeepalives(), tunnelConfig.getDrainTimeout());
     }
 
     @PreDestroy
     private void shutdown() {
+        this.running = false;
         if (tunnelRegistry != null) {
             logger.info("Tunnel Mode: graceful shutdown...");
             tunnelRegistry.stop();
@@ -129,5 +141,55 @@ public class TunnelService {
             logger.info("Tunnel Mode: shutdown complete — {} connections were active",
                     tunnelEngine.getTotalActiveConnections());
         }
+    }
+
+    // ─── Runtime Access (read-only) ─────────────────────────────────────
+
+    public boolean isRunning() {
+        return running;
+    }
+
+    public TunnelRegistry getTunnelRegistry() {
+        return tunnelRegistry;
+    }
+
+    public TunnelEngine getTunnelEngine() {
+        return tunnelEngine;
+    }
+
+    /**
+     * Define o event bridge para integração com o dashboard.
+     * Chamado pelo DashboardService antes do startup do tunnel.
+     */
+    public void setEventBridge(dev.nishisan.ishin.gateway.dashboard.TunnelDashboardEventBridge eventBridge) {
+        this.eventBridge = eventBridge;
+        // Se tunnel já iniciou, conectar imediatamente
+        if (tunnelRegistry != null && tunnelEngine != null) {
+            connectEventBridge();
+        }
+    }
+
+    private void connectEventBridge() {
+        if (eventBridge == null) return;
+
+        // Registry callbacks
+        tunnelRegistry.setOnMemberAdded((vPort, memberKey) ->
+                eventBridge.onMemberAdded(vPort, memberKey));
+        tunnelRegistry.setOnMemberRemoved((vPort, memberKey) ->
+                eventBridge.onMemberRemoved(vPort, memberKey));
+        tunnelRegistry.setOnStandbyPromoted((vPort, memberKey) ->
+                eventBridge.onStandbyPromoted(vPort, memberKey));
+        tunnelRegistry.setOnKeepaliveTimeout((vPort, memberKey) ->
+                eventBridge.onKeepaliveTimeout(vPort, memberKey));
+
+        // Engine callbacks
+        tunnelEngine.setOnListenerOpened(vPort ->
+                eventBridge.onListenerOpened(vPort));
+        tunnelEngine.setOnListenerClosed(vPort ->
+                eventBridge.onListenerClosed(vPort));
+        tunnelEngine.setOnConnectError((vPort, backend, errorType) ->
+                eventBridge.onConnectError(vPort, backend, errorType));
+
+        logger.info("TunnelService: event bridge connected to dashboard");
     }
 }

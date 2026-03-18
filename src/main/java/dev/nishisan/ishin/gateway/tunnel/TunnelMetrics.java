@@ -23,6 +23,7 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -42,6 +43,7 @@ public class TunnelMetrics {
     private final ConcurrentHashMap<String, Counter> counterCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Timer> timerCache = new ConcurrentHashMap<>();
     private final AtomicInteger activeListenerPorts = new AtomicInteger(0);
+    private final Set<String> registeredPerBackendGauges = ConcurrentHashMap.newKeySet();
 
     public TunnelMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -147,6 +149,35 @@ public class TunnelMetrics {
         ).increment();
     }
 
+    // ─── Active Connection Gauges ────────────────────────────────────────
+
+    /**
+     * Registra gauge global de conexões TCP ativas no tunnel.
+     * Vinculado ao {@code AtomicInteger} do {@link TunnelEngine}.
+     */
+    public void registerGlobalActiveConnections(AtomicInteger counter) {
+        Gauge.builder("ishin.tunnel.connections.active", counter, AtomicInteger::get)
+                .description("Conexões TCP ativas no tunnel (global)")
+                .register(registry);
+    }
+
+    /**
+     * Registra gauge de conexões ativas por backend+virtualPort.
+     * Vinculado ao {@code AtomicInteger} do {@link BackendMember}.
+     * Idempotente: registros duplicados são ignorados.
+     */
+    public void registerPerBackendActiveConnections(int virtualPort, String backend,
+                                                     AtomicInteger counter) {
+        String gaugeKey = virtualPort + ":" + backend;
+        if (registeredPerBackendGauges.add(gaugeKey)) {
+            Gauge.builder("ishin.tunnel.connections.active.per_backend", counter, AtomicInteger::get)
+                    .description("Conexões TCP ativas por backend")
+                    .tag("virtual_port", String.valueOf(virtualPort))
+                    .tag("backend", backend)
+                    .register(registry);
+        }
+    }
+
     // ─── Listener Tracking ──────────────────────────────────────────────
 
     public void listenerOpened() {
@@ -155,5 +186,21 @@ public class TunnelMetrics {
 
     public void listenerClosed() {
         activeListenerPorts.decrementAndGet();
+    }
+
+    // ─── Routing Duration ───────────────────────────────────────────────
+
+    /**
+     * Registra a duração do roteamento interno (lookup do grupo + seleção de membro)
+     * antes do handshake TCP com o backend.
+     */
+    public void recordRoutingDuration(int virtualPort, long durationMs) {
+        String key = "routing:" + virtualPort;
+        timerCache.computeIfAbsent(key, k ->
+                Timer.builder("ishin.tunnel.routing.duration.seconds")
+                        .description("Duração do roteamento interno (lookup + seleção)")
+                        .tag("virtual_port", String.valueOf(virtualPort))
+                        .register(registry)
+        ).record(Duration.ofMillis(durationMs));
     }
 }

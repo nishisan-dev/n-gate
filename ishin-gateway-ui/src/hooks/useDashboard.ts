@@ -96,3 +96,28 @@ export function useEvents(limit = 50, intervalMs = 10000) {
 
   return events;
 }
+
+// ─── useTunnelRuntime ───────────────────────────────────────────
+
+export function useTunnelRuntime(enabled: boolean, intervalMs = 5000) {
+  const [runtime, setRuntime] = useState<import('../types').TunnelRuntimeSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setRuntime(null);
+      return;
+    }
+
+    const fetchRuntime = async () => {
+      try {
+        const data = await api.getTunnelRuntime();
+        setRuntime(data);
+      } catch { /* silent */ }
+    };
+    fetchRuntime();
+    const id = setInterval(fetchRuntime, intervalMs);
+    return () => clearInterval(id);
+  }, [enabled, intervalMs]);
+
+  return runtime;
+}

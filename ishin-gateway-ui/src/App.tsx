@@ -1,28 +1,46 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { MetricsCards } from './components/MetricsCards/MetricsCards';
+import { TunnelMetricsCards } from './components/TunnelMetricsCards/TunnelMetricsCards';
 import { TopologyView } from './components/TopologyView/TopologyView';
+import { TunnelTopologyView } from './components/TunnelTopologyView/TunnelTopologyView';
+import { TunnelMembersPanel } from './components/TunnelMembersPanel/TunnelMembersPanel';
+import { TunnelChartsPanel } from './components/TunnelChartsPanel/TunnelChartsPanel';
 import { EventTimeline } from './components/EventTimeline/EventTimeline';
 import { LatencyChart } from './components/LatencyChart/LatencyChart';
 import { TracesPanel } from './components/TracesPanel/TracesPanel';
-import { useMetrics, useTopology, useHealth, useEvents } from './hooks/useDashboard';
-import { Activity, Server, Shield, Map, TrendingUp, Layers, Clock } from 'lucide-react';
+import { useMetrics, useTopology, useHealth, useEvents, useTunnelRuntime } from './hooks/useDashboard';
+import { Activity, Server, Shield, Map, TrendingUp, Layers, Clock, Network, Users } from 'lucide-react';
 import './App.css';
 
-type TabId = 'topology' | 'latency' | 'traces';
+type TabId = 'topology' | 'latency' | 'traces' | 'members';
 
 function App() {
   const metrics = useMetrics();
   const { topology, loading: topoLoading } = useTopology();
   const health = useHealth();
   const events = useEvents();
+
+  const isTunnelMode = health?.mode === 'tunnel';
+  const runtime = useTunnelRuntime(isTunnelMode);
+
   const [activeTab, setActiveTab] = useState<TabId>('topology');
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'topology', label: 'Topologia', icon: <Map size={13} /> },
-    { id: 'latency', label: 'Latência', icon: <TrendingUp size={13} /> },
-    { id: 'traces', label: 'Traces', icon: <Layers size={13} /> },
-  ];
+  // Tabs mode-aware: tunnel mode esconde Traces, adiciona Members
+  const tabs = useMemo(() => {
+    if (isTunnelMode) {
+      return [
+        { id: 'topology' as TabId, label: 'Topologia', icon: <Map size={13} /> },
+        { id: 'members' as TabId, label: 'Members', icon: <Users size={13} /> },
+        { id: 'latency' as TabId, label: 'Métricas', icon: <TrendingUp size={13} /> },
+      ];
+    }
+    return [
+      { id: 'topology' as TabId, label: 'Topologia', icon: <Map size={13} /> },
+      { id: 'latency' as TabId, label: 'Latência', icon: <TrendingUp size={13} /> },
+      { id: 'traces' as TabId, label: 'Traces', icon: <Layers size={13} /> },
+    ];
+  }, [isTunnelMode]);
 
   return (
     <div className="dashboard">
@@ -31,8 +49,8 @@ function App() {
         <div className="sidebar-brand">
           <Shield size={20} className="brand-icon" />
           <div className="brand-text">
-            <span className="brand-name">n-gate</span>
-            <span className="brand-sub">observability</span>
+            <span className="brand-name">{isTunnelMode ? 'ishin' : 'n-gate'}</span>
+            <span className="brand-sub">{isTunnelMode ? 'tunnel' : 'observability'}</span>
           </div>
           <span className="brand-version mono">{health?.version ?? '...'}</span>
         </div>
@@ -50,10 +68,27 @@ function App() {
             <Clock size={12} />
             <span className="status-label">{health?.uptime ?? '...'}</span>
           </div>
-          <div className="status-item">
-            <Activity size={12} />
-            <span className="status-label">{health?.listeners ?? 0} listeners</span>
-          </div>
+          {isTunnelMode ? (
+            <>
+              <div className="status-item">
+                <Network size={12} />
+                <span className="status-label">{health?.virtualListeners ?? 0} listeners</span>
+              </div>
+              <div className="status-item">
+                <Users size={12} />
+                <span className="status-label">{health?.tunnelMembers ?? 0} members</span>
+              </div>
+              <div className="status-item">
+                <Activity size={12} />
+                <span className="status-label">{health?.activeConnections ?? 0} conns</span>
+              </div>
+            </>
+          ) : (
+            <div className="status-item">
+              <Activity size={12} />
+              <span className="status-label">{health?.listeners ?? 0} listeners</span>
+            </div>
+          )}
         </div>
 
         <EventTimeline events={events} />
@@ -62,14 +97,18 @@ function App() {
       {/* ─── Main Content ─────────────────────────────────── */}
       <main className="main">
         <header className="main-header">
-          <h1>Dashboard</h1>
+          <h1>{isTunnelMode ? 'Tunnel Dashboard' : 'Dashboard'}</h1>
           <span className="header-timestamp mono">
             {new Date().toLocaleTimeString('pt-BR')}
           </span>
         </header>
 
         <section className="main-metrics">
-          <MetricsCards metrics={metrics} />
+          {isTunnelMode ? (
+            <TunnelMetricsCards metrics={metrics} runtime={runtime} />
+          ) : (
+            <MetricsCards metrics={metrics} />
+          )}
         </section>
 
         {/* ─── Tab Navigation ──────────────────────────────── */}
@@ -90,24 +129,38 @@ function App() {
         <section className="main-content">
           {activeTab === 'topology' && (
             <ReactFlowProvider>
-              <TopologyView data={topology} loading={topoLoading} metrics={metrics} />
+              {isTunnelMode ? (
+                <TunnelTopologyView data={topology} loading={topoLoading} metrics={metrics} />
+              ) : (
+                <TopologyView data={topology} loading={topoLoading} metrics={metrics} />
+              )}
             </ReactFlowProvider>
           )}
 
           {activeTab === 'latency' && (
             <div className="latency-section">
-              <LatencyChart
-                metricName="ngate.request.duration"
-                title="Request Duration"
-              />
-              <LatencyChart
-                metricName="ngate.upstream.duration"
-                title="Upstream Duration"
-              />
+              {isTunnelMode ? (
+                <TunnelChartsPanel />
+              ) : (
+                <>
+                  <LatencyChart
+                    metricName="ngate.request.duration"
+                    title="Request Duration"
+                  />
+                  <LatencyChart
+                    metricName="ngate.upstream.duration"
+                    title="Upstream Duration"
+                  />
+                </>
+              )}
             </div>
           )}
 
-          {activeTab === 'traces' && (
+          {activeTab === 'members' && isTunnelMode && (
+            <TunnelMembersPanel runtime={runtime} />
+          )}
+
+          {activeTab === 'traces' && !isTunnelMode && (
             <TracesPanel enabled={true} />
           )}
         </section>

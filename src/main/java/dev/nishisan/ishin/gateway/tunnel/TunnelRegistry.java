@@ -23,11 +23,13 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -61,6 +63,12 @@ public class TunnelRegistry {
     private Consumer<Integer> onGroupCreated;   // virtualPort
     private Consumer<Integer> onGroupRemoved;   // virtualPort
 
+    // Callbacks para o event bridge do dashboard
+    private BiConsumer<Integer, String> onMemberAdded;      // (virtualPort, memberKey)
+    private BiConsumer<Integer, String> onMemberRemoved;    // (virtualPort, memberKey)
+    private BiConsumer<Integer, String> onStandbyPromoted;  // (virtualPort, memberKey)
+    private BiConsumer<Integer, String> onKeepaliveTimeout; // (virtualPort, memberKey)
+
     private volatile boolean running = false;
     private Thread pollerThread;
     private Thread keepaliveCheckerThread;
@@ -79,6 +87,22 @@ public class TunnelRegistry {
 
     public void setOnGroupRemoved(Consumer<Integer> onGroupRemoved) {
         this.onGroupRemoved = onGroupRemoved;
+    }
+
+    public void setOnMemberAdded(BiConsumer<Integer, String> onMemberAdded) {
+        this.onMemberAdded = onMemberAdded;
+    }
+
+    public void setOnMemberRemoved(BiConsumer<Integer, String> onMemberRemoved) {
+        this.onMemberRemoved = onMemberRemoved;
+    }
+
+    public void setOnStandbyPromoted(BiConsumer<Integer, String> onStandbyPromoted) {
+        this.onStandbyPromoted = onStandbyPromoted;
+    }
+
+    public void setOnKeepaliveTimeout(BiConsumer<Integer, String> onKeepaliveTimeout) {
+        this.onKeepaliveTimeout = onKeepaliveTimeout;
     }
 
     public void setRegistryMap(DistributedMap<String, TunnelRegistryEntry> registryMap) {
@@ -194,7 +218,10 @@ public class TunnelRegistry {
                         registryEntry.getKeepaliveInterval()
                 );
 
-                group.addOrUpdateMember(member);
+                boolean isNew = group.addOrUpdateMember(member);
+                if (isNew && onMemberAdded != null) {
+                    onMemberAdded.accept(virtualPort, member.getKey());
+                }
 
                 // Registrar key como "vista"
                 seenKeys.computeIfAbsent(virtualPort, k -> new ArrayList<>())
@@ -217,6 +244,9 @@ public class TunnelRegistry {
                     if (group != null) {
                         boolean empty = group.removeMember(key);
                         metrics.recordPoolRemoval(vp, key, "graceful");
+                        if (onMemberRemoved != null) {
+                            onMemberRemoved.accept(vp, key);
+                        }
                         if (empty) {
                             groups.remove(vp);
                             logger.info("VirtualPortGroup removed — vPort:{} has no members", vp);
@@ -257,6 +287,9 @@ public class TunnelRegistry {
             for (String key : toRemove) {
                 boolean empty = group.removeMember(key);
                 metrics.recordPoolRemoval(vp, key, "keepalive_timeout");
+                if (onKeepaliveTimeout != null) {
+                    onKeepaliveTimeout.accept(vp, key);
+                }
 
                 if (empty) {
                     groups.remove(vp);
@@ -275,6 +308,9 @@ public class TunnelRegistry {
                 BackendMember promoted = group.promoteStandby();
                 if (promoted != null) {
                     metrics.recordStandbyPromotion(vp);
+                    if (onStandbyPromoted != null) {
+                        onStandbyPromoted.accept(vp, promoted.getKey());
+                    }
                     logger.info("Auto-promoted STANDBY {} in vPort:{}", promoted.getKey(), vp);
                 }
             }
@@ -341,5 +377,26 @@ public class TunnelRegistry {
      */
     public void removeKnownRegistryKey(String key) {
         knownRegistryKeys.remove(key);
+    }
+
+    // ─── Snapshot Methods ───────────────────────────────────────────────
+
+    /**
+     * Retorna cópia defensiva do mapa de grupos.
+     */
+    public Map<Integer, VirtualPortGroup> getGroupsSnapshot() {
+        return new HashMap<>(groups);
+    }
+
+    public int getTotalActiveMembers() {
+        return groups.values().stream().mapToInt(VirtualPortGroup::getActiveMemberCount).sum();
+    }
+
+    public int getTotalStandbyMembers() {
+        return groups.values().stream().mapToInt(VirtualPortGroup::getStandbyMemberCount).sum();
+    }
+
+    public int getTotalDrainingMembers() {
+        return groups.values().stream().mapToInt(VirtualPortGroup::getDrainingMemberCount).sum();
     }
 }
