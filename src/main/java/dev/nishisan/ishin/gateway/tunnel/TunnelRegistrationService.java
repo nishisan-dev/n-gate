@@ -117,10 +117,9 @@ public class TunnelRegistrationService {
         });
         localEntry.setListeners(listenerRegs);
 
-        // Publicar no NMap
+        // Publicar no NMap — usa retry com backoff para aguardar estabilização do leader
         String registryKey = REGISTRY_KEY_PREFIX + nodeId;
-        registryMap.put(registryKey, localEntry);
-        logger.info("Published tunnel registry entry: {} → {}", registryKey, localEntry);
+        publishWithRetry(registryKey, localEntry, 5, 2000);
 
         // Iniciar keepalive thread
         this.running = true;
@@ -129,6 +128,38 @@ public class TunnelRegistrationService {
                 .start(() -> keepaliveLoop(regConfig.getKeepaliveInterval(), registryKey));
     }
 
+    /**
+     * Publica a entrada no registry com retry e backoff exponencial.
+     * Necessário porque o leader NGrid pode ainda não ter estabilizado
+     * quando os nós proxy fazem o startup.
+     */
+    private void publishWithRetry(String registryKey, TunnelRegistryEntry entry,
+                                  int maxRetries, long initialDelayMs) {
+        long delay = initialDelayMs;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                registryMap.put(registryKey, entry);
+                logger.info("Published tunnel registry entry (attempt {}): {} → {}", attempt, registryKey, entry);
+                return;
+            } catch (IllegalStateException e) {
+                logger.warn("Tunnel registration attempt {}/{} failed: {} — retrying in {}ms",
+                        attempt, maxRetries, e.getMessage(), delay);
+                if (attempt == maxRetries) {
+                    logger.error("Tunnel registration failed after {} attempts — continuing without registration. "
+                            + "The keepalive loop will retry automatically.", maxRetries);
+                    return;
+                }
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    logger.warn("Tunnel registration interrupted during retry backoff");
+                    return;
+                }
+                delay = Math.min(delay * 2, 30_000); // backoff exponencial, max 30s
+            }
+        }
+    }
     private void keepaliveLoop(int intervalSeconds, String registryKey) {
         while (running) {
             try {
@@ -141,8 +172,11 @@ public class TunnelRegistrationService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
+            } catch (IllegalStateException e) {
+                // Leader instável ou não disponível — retry no próximo ciclo
+                logger.warn("Keepalive write failed ({}), will retry in {}s", e.getMessage(), intervalSeconds);
             } catch (Exception e) {
-                logger.error("Error in keepalive loop", e);
+                logger.error("Unexpected error in keepalive loop", e);
             }
         }
     }
@@ -193,7 +227,20 @@ public class TunnelRegistrationService {
         }
     }
 
+    /**
+     * Resolve o host para registro no tunnel.
+     * Usa o IP configurado no bloco cluster (o mesmo IP usado para comunicação NGrid),
+     * que é o IP real acessível pelos outros nós na rede.
+     */
     private String resolveHost() {
+        // Preferir o host do cluster — é o IP real da rede usado pelo NGrid
+        ServerConfiguration config = configurationManager.loadConfiguration();
+        if (config.getCluster() != null && config.getCluster().getHost() != null
+                && !config.getCluster().getHost().isBlank()
+                && !"0.0.0.0".equals(config.getCluster().getHost())) {
+            return config.getCluster().getHost();
+        }
+        // Fallback para hostname resolution
         try {
             return InetAddress.getLocalHost().getHostAddress();
         } catch (Exception e) {
