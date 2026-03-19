@@ -123,6 +123,24 @@ public class TunnelService {
         tunnelEngine.start();
         tunnelRegistry.start();
 
+        // Pré-popular knownRegistryKeys a partir dos seeds do cluster.
+        // O DistributedMap (NGrid) não expõe keys()/entrySet(), então o poller
+        // precisa saber quais chaves verificar. Derivamos dos seeds: cada hostname
+        // do seed é o nodeId do proxy, e a chave é "tunnel:registry:" + nodeId.
+        if (config.getCluster() != null && config.getCluster().getSeeds() != null) {
+            String localNodeId = clusterService.getLocalNodeId();
+            for (String seed : config.getCluster().getSeeds()) {
+                String[] parts = seed.split(":");
+                String seedNodeId = parts[0];
+                // Excluir o próprio nó tunnel (ele não se registra como proxy)
+                if (!seedNodeId.equals(localNodeId)) {
+                    String registryKey = TunnelRegistry.REGISTRY_KEY_PREFIX + seedNodeId;
+                    tunnelRegistry.addKnownRegistryKey(registryKey);
+                    logger.info("Pre-seeded registry key for polling: {}", registryKey);
+                }
+            }
+        }
+
         this.running = true;
 
         logger.info("Tunnel Mode fully initialized — LB algorithm: {}, missedKeepalives: {}, drainTimeout: {}s",
