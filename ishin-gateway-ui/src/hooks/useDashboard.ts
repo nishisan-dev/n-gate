@@ -1,30 +1,102 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '../api';
+import { useState, useEffect, useCallback } from 'react';
+import { api, createMetricsSocket, type WsState } from '../api';
 import type { TopologyData, HealthInfo, EventLog, MetricData } from '../types';
+
+// ─── Page Visibility helper ────────────────────────────────────
+// Pauses and resumes an interval based on document visibility.
+// Returns a cleanup function.
+
+function createVisibilityAwareInterval(
+  callback: () => void,
+  intervalMs: number,
+): () => void {
+  let timerId: ReturnType<typeof setInterval> | null = null;
+
+  function start() {
+    if (timerId !== null) return;
+    timerId = setInterval(callback, intervalMs);
+  }
+
+  function stop() {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      stop();
+    } else {
+      callback(); // fetch immediately on resume
+      start();
+    }
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  // Start immediately if visible
+  if (!document.hidden) {
+    start();
+  }
+
+  return () => {
+    stop();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  };
+}
 
 // ─── useMetrics: WebSocket + polling fallback ───────────────────
 
 export function useMetrics(intervalMs = 5000) {
   const [metrics, setMetrics] = useState<Record<string, MetricData>>({});
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Tenta WebSocket primeiro
-    wsRef.current = api.connectMetricsWs((data) => {
-      setMetrics(data as Record<string, MetricData>);
+    const controller = new AbortController();
+    let pollCleanup: (() => void) | null = null;
+    let wsConnected = false;
+
+    // Polling fallback — only runs when WS is not connected
+    function startPolling() {
+      if (pollCleanup) return; // already polling
+      pollCleanup = createVisibilityAwareInterval(async () => {
+        if (wsConnected) return; // WS took over
+        try {
+          const data = await api.getCurrentMetrics();
+          setMetrics(data);
+        } catch { /* silent */ }
+      }, intervalMs);
+    }
+
+    function stopPolling() {
+      pollCleanup?.();
+      pollCleanup = null;
+    }
+
+    // WebSocket with managed lifecycle
+    const socket = createMetricsSocket({
+      signal: controller.signal,
+      onMessage: (data) => {
+        setMetrics(data as Record<string, MetricData>);
+      },
+      onStateChange: (state: WsState) => {
+        if (state === 'open') {
+          wsConnected = true;
+          stopPolling(); // WS is live, kill polling
+        } else if (state === 'closed' || state === 'connecting') {
+          wsConnected = false;
+          startPolling(); // WS down, use polling fallback
+        }
+      },
     });
 
-    // Polling como fallback enquanto WebSocket não conecta
-    const pollId = setInterval(async () => {
-      try {
-        const data = await api.getCurrentMetrics();
-        setMetrics(data);
-      } catch { /* silent */ }
-    }, intervalMs);
+    // Start polling immediately as fallback until WS connects
+    startPolling();
 
     return () => {
-      clearInterval(pollId);
-      wsRef.current?.close();
+      controller.abort(); // stops WS + reconnection chain
+      socket.close();
+      stopPolling();
     };
   }, [intervalMs]);
 
@@ -50,8 +122,8 @@ export function useTopology(intervalMs = 30000) {
 
   useEffect(() => {
     fetchTopology();
-    const id = setInterval(fetchTopology, intervalMs);
-    return () => clearInterval(id);
+    const cleanup = createVisibilityAwareInterval(fetchTopology, intervalMs);
+    return cleanup;
   }, [fetchTopology, intervalMs]);
 
   return { topology, loading, refetch: fetchTopology };
@@ -70,8 +142,8 @@ export function useHealth(intervalMs = 10000) {
       } catch { /* silent */ }
     };
     fetchHealth();
-    const id = setInterval(fetchHealth, intervalMs);
-    return () => clearInterval(id);
+    const cleanup = createVisibilityAwareInterval(fetchHealth, intervalMs);
+    return cleanup;
   }, [intervalMs]);
 
   return health;
@@ -90,8 +162,8 @@ export function useEvents(limit = 50, intervalMs = 10000) {
       } catch { /* silent */ }
     };
     fetchEvents();
-    const id = setInterval(fetchEvents, intervalMs);
-    return () => clearInterval(id);
+    const cleanup = createVisibilityAwareInterval(fetchEvents, intervalMs);
+    return cleanup;
   }, [limit, intervalMs]);
 
   return events;
@@ -115,8 +187,8 @@ export function useTunnelRuntime(enabled: boolean, intervalMs = 5000) {
       } catch { /* silent */ }
     };
     fetchRuntime();
-    const id = setInterval(fetchRuntime, intervalMs);
-    return () => clearInterval(id);
+    const cleanup = createVisibilityAwareInterval(fetchRuntime, intervalMs);
+    return cleanup;
   }, [enabled, intervalMs]);
 
   return runtime;

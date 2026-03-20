@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { MetricsCards } from './components/MetricsCards/MetricsCards';
 import { TunnelMetricsCards } from './components/TunnelMetricsCards/TunnelMetricsCards';
@@ -25,6 +25,27 @@ function App() {
   const runtime = useTunnelRuntime(isTunnelMode);
 
   const [activeTab, setActiveTab] = useState<TabId>('topology');
+
+  // ─── Clock state (avoids inline new Date() on every render) ───
+  const [clockTime, setClockTime] = useState(() => new Date().toLocaleTimeString('pt-BR'));
+  useEffect(() => {
+    let timerId: ReturnType<typeof setInterval> | null = null;
+
+    function start() {
+      if (timerId) return;
+      timerId = setInterval(() => setClockTime(new Date().toLocaleTimeString('pt-BR')), 1000);
+    }
+    function stop() {
+      if (timerId) { clearInterval(timerId); timerId = null; }
+    }
+    function onVisibility() {
+      if (document.hidden) { stop(); } else { setClockTime(new Date().toLocaleTimeString('pt-BR')); start(); }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility);
+    start();
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   // Tabs mode-aware: tunnel mode esconde Traces, adiciona Members
   const tabs = useMemo(() => {
@@ -99,7 +120,7 @@ function App() {
         <header className="main-header">
           <h1>{isTunnelMode ? 'Tunnel Dashboard' : 'Dashboard'}</h1>
           <span className="header-timestamp mono">
-            {new Date().toLocaleTimeString('pt-BR')}
+            {clockTime}
           </span>
         </header>
 
