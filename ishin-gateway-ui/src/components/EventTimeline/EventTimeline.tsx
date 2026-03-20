@@ -51,9 +51,20 @@ export function EventTimeline({ events }: Props) {
   );
 }
 
-function formatTimeAgo(timestamp: string): string {
+function formatTimeAgo(timestamp: string | number): string {
   const now = Date.now();
-  const then = new Date(timestamp).getTime();
+  // O backend envia epoch seconds (float); converter para ms
+  let then: number;
+  if (typeof timestamp === 'number') {
+    then = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+  } else {
+    const numeric = Number(timestamp);
+    if (Number.isFinite(numeric)) {
+      then = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    } else {
+      then = new Date(timestamp).getTime();
+    }
+  }
   const diff = Math.floor((now - then) / 1000);
 
   if (diff < 60) return `${diff}s atrás`;

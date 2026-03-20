@@ -38,7 +38,7 @@ const TIME_RANGES = [
 ];
 
 export function LatencyChart({
-  metricName = 'ngate.request.duration',
+  metricName = 'ishin.request.duration',
   title = 'Latência',
   unit = 'ms',
   hours: defaultHours = 1,

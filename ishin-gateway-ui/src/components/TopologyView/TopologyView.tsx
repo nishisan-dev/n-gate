@@ -625,7 +625,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
   const scriptTiming: Record<string, TimerAccumulator> = {};
 
   for (const [key, metric] of Object.entries(metrics)) {
-    if (key.startsWith('ngate.requests.total') && metric.value !== undefined) {
+    if (key.startsWith('ishin.requests.total') && metric.value !== undefined) {
       counters.global += metric.value;
 
       const listener = metric.tags?.listener;
@@ -635,7 +635,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
       continue;
     }
 
-    if (key.startsWith('ngate.upstream.requests') && metric.value !== undefined) {
+    if (key.startsWith('ishin.upstream.requests') && metric.value !== undefined) {
       const backend = metric.tags?.backend;
       if (backend) {
         counters.backends[backend] = (counters.backends[backend] ?? 0) + metric.value;
@@ -643,7 +643,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
       continue;
     }
 
-    if (key.startsWith('ngate.context.requests.total') && metric.value !== undefined) {
+    if (key.startsWith('ishin.context.requests.total') && metric.value !== undefined) {
       const listener = metric.tags?.listener;
       const contextName = metric.tags?.context;
       if (listener && contextName) {
@@ -653,7 +653,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
       continue;
     }
 
-    if (key.startsWith('ngate.script.executions.total') && metric.value !== undefined) {
+    if (key.startsWith('ishin.script.executions.total') && metric.value !== undefined) {
       const listener = metric.tags?.listener;
       const contextName = metric.tags?.context;
       const script = metric.tags?.script;
@@ -664,7 +664,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
       continue;
     }
 
-    if (key.startsWith('ngate.context.duration')) {
+    if (key.startsWith('ishin.context.duration')) {
       const listener = metric.tags?.listener;
       const contextName = metric.tags?.context;
       if (listener && contextName) {
@@ -673,7 +673,7 @@ function collectMetricSnapshot(metrics: Record<string, MetricData>): MetricSnaps
       continue;
     }
 
-    if (key.startsWith('ngate.script.duration')) {
+    if (key.startsWith('ishin.script.duration')) {
       const listener = metric.tags?.listener;
       const contextName = metric.tags?.context;
       const script = metric.tags?.script;

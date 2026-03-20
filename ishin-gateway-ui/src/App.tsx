@@ -144,11 +144,11 @@ function App() {
               ) : (
                 <>
                   <LatencyChart
-                    metricName="ngate.request.duration"
+                    metricName="ishin.request.duration"
                     title="Request Duration"
                   />
                   <LatencyChart
-                    metricName="ngate.upstream.duration"
+                    metricName="ishin.upstream.duration"
                     title="Upstream Duration"
                   />
                 </>

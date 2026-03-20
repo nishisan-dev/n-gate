@@ -37,7 +37,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
   const prevConnsRef = useRef<{ count: number; time: number } | null>(null);
 
   // ─── Calcula conn/s a partir do delta do contador ─────────
-  const totalConns = sumAllMetricValues(metrics, 'ishin.tunnel.connections.accepted', 'value');
+  const totalConns = sumAllMetricValues(metrics, 'ishin.tunnel.connections.total', 'count');
   useEffect(() => {
     const now = Date.now();
     if (prevConnsRef.current !== null) {
@@ -51,13 +51,13 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
   }, [totalConns]);
 
   const activeConns = runtime?.activeConnections ?? findMetricValue(metrics, 'ishin.tunnel.connections.active', 'value') ?? 0;
-  const connectErrors = sumAllMetricValues(metrics, 'ishin.tunnel.connect.errors', 'value');
-  const avgSessionMs = findMetricValue(metrics, 'ishin.tunnel.session.duration', 'mean') ?? 0;
-  const avgConnectMs = findMetricValue(metrics, 'ishin.tunnel.connection.duration', 'mean') ?? 0;
+  const connectErrors = sumAllMetricValues(metrics, 'ishin.tunnel.connect.errors.total', 'value');
+  const avgSessionMs = findMetricValue(metrics, 'ishin.tunnel.session.duration.seconds', 'mean') ?? 0;
+  const avgConnectMs = findMetricValue(metrics, 'ishin.tunnel.connect.duration.seconds', 'mean') ?? 0;
 
   // Throughput (somando bytes in + out)
-  const bytesIn = findMetricValue(metrics, 'ishin.tunnel.bytes.sent', 'value') ?? 0;
-  const bytesOut = findMetricValue(metrics, 'ishin.tunnel.bytes.received', 'value') ?? 0;
+  const bytesIn = findMetricValue(metrics, 'ishin.tunnel.bytes.sent.total', 'value') ?? 0;
+  const bytesOut = findMetricValue(metrics, 'ishin.tunnel.bytes.received.total', 'value') ?? 0;
   const totalBytes = bytesIn + bytesOut;
 
   const cards = useMemo(() => [
@@ -67,7 +67,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
       unit: 'conn/s',
       icon: <Zap size={16} />,
       color: connRate > 0 ? 'success' as const : 'accent' as const,
-      metricName: 'ishin.tunnel.connections.accepted',
+      metricName: 'ishin.tunnel.connections.total',
       showAsRate: true,
       sparkUnit: 'conn/s',
     },
@@ -87,7 +87,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
       unit: 'ms avg',
       icon: <Network size={16} />,
       color: avgConnectMs > 500 ? 'warning' as const : 'success' as const,
-      metricName: 'ishin.tunnel.connection.duration',
+      metricName: 'ishin.tunnel.connect.duration.seconds',
       showAsRate: false,
       sparkUnit: 'ms',
     },
@@ -97,7 +97,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
       unit: 'avg',
       icon: <Gauge size={16} />,
       color: 'accent' as const,
-      metricName: 'ishin.tunnel.session.duration',
+      metricName: 'ishin.tunnel.session.duration.seconds',
       showAsRate: false,
       sparkUnit: 'ms',
     },
@@ -107,7 +107,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
       unit: 'total',
       icon: <ArrowUpDown size={16} />,
       color: 'accent' as const,
-      metricName: 'ishin.tunnel.bytes.sent',
+      metricName: 'ishin.tunnel.bytes.sent.total',
       showAsRate: true,
       sparkUnit: 'bytes/s',
     },
@@ -117,7 +117,7 @@ export function TunnelMetricsCards({ metrics, runtime }: Props) {
       unit: 'total',
       icon: <AlertTriangle size={16} />,
       color: connectErrors > 0 ? 'error' as const : 'success' as const,
-      metricName: 'ishin.tunnel.connect.errors',
+      metricName: 'ishin.tunnel.connect.errors.total',
       showAsRate: true,
       sparkUnit: 'err/s',
     },

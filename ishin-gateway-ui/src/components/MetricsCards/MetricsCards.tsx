@@ -34,11 +34,11 @@ interface SparklinePoint {
 // ─── Mapa estático: label → { metricName, showAsRate } ────────
 // Usado pelo sparkline para evitar dependência de `cards` (que muda a cada push)
 const CARD_META: Record<string, { metricName: string; showAsRate: boolean; sparkUnit: string }> = {
-  'Requests':       { metricName: 'ngate.requests.total', showAsRate: true, sparkUnit: 'req/s' },
-  'Req/s':          { metricName: 'ngate.requests.total', showAsRate: true, sparkUnit: 'req/s' },
-  'Latência Média': { metricName: 'ngate.request.duration', showAsRate: false, sparkUnit: 'ms' },
-  'Erros 5xx':      { metricName: 'ngate.request.errors', showAsRate: true, sparkUnit: 'err/s' },
-  'Rate Limited':   { metricName: 'ngate.ratelimit.total', showAsRate: true, sparkUnit: 'rej/s' },
+  'Requests':       { metricName: 'ishin.requests.total', showAsRate: true, sparkUnit: 'req/s' },
+  'Req/s':          { metricName: 'ishin.requests.total', showAsRate: true, sparkUnit: 'req/s' },
+  'Latência Média': { metricName: 'ishin.request.duration', showAsRate: false, sparkUnit: 'ms' },
+  'Erros 5xx':      { metricName: 'ishin.request.errors', showAsRate: true, sparkUnit: 'err/s' },
+  'Rate Limited':   { metricName: 'ishin.ratelimit.total', showAsRate: true, sparkUnit: 'rej/s' },
   'Threads':        { metricName: 'jvm.threads.live', showAsRate: false, sparkUnit: 'ativos' },
 };
 
@@ -57,7 +57,7 @@ export function MetricsCards({ metrics }: Props) {
   const prevRequestsRef = useRef<{ count: number; time: number } | null>(null);
 
   // ─── Calcula req/s a partir do delta do contador ────────────
-  const totalRequests = sumAllMetricValues(metrics, 'ngate.requests.total', 'value');
+  const totalRequests = sumAllMetricValues(metrics, 'ishin.requests.total', 'value');
   useEffect(() => {
     const now = Date.now();
     if (prevRequestsRef.current !== null) {
@@ -72,9 +72,9 @@ export function MetricsCards({ metrics }: Props) {
 
   // ─── Cards ─────────────────────────────────────────────────
   const cards = useMemo<CardData[]>(() => {
-    const meanLatency = findMetricValue(metrics, 'ngate.request.duration', 'mean') ?? 0;
-    const errorCount = sumMetricValues(metrics, 'ngate.requests.total', 'value', { status: '5' });
-    const rateLimitRejects = sumMetricValues(metrics, 'ngate.ratelimit.total', 'value', { result: 'REJECTED' });
+    const meanLatency = findMetricValue(metrics, 'ishin.request.duration', 'mean') ?? 0;
+    const errorCount = sumMetricValues(metrics, 'ishin.requests.total', 'value', { status: '5' });
+    const rateLimitRejects = sumMetricValues(metrics, 'ishin.ratelimit.total', 'value', { result: 'REJECTED' });
     const activeThreads = findMetricValue(metrics, 'jvm.threads.live', 'value') ?? 0;
 
     return [
@@ -84,7 +84,7 @@ export function MetricsCards({ metrics }: Props) {
         unit: 'total',
         icon: <Activity size={16} />,
         color: 'accent' as const,
-        metricName: 'ngate.requests.total',
+        metricName: 'ishin.requests.total',
         showAsRate: true,
       },
       {
@@ -93,7 +93,7 @@ export function MetricsCards({ metrics }: Props) {
         unit: 'req/s',
         icon: <TrendingUp size={16} />,
         color: requestRate > 0 ? 'success' as const : 'accent' as const,
-        metricName: 'ngate.requests.total',
+        metricName: 'ishin.requests.total',
         showAsRate: true,
       },
       {
@@ -102,7 +102,7 @@ export function MetricsCards({ metrics }: Props) {
         unit: 'ms',
         icon: <Gauge size={16} />,
         color: meanLatency > 500 ? 'warning' as const : 'success' as const,
-        metricName: 'ngate.request.duration',
+        metricName: 'ishin.request.duration',
       },
       {
         label: 'Erros 5xx',
@@ -110,7 +110,7 @@ export function MetricsCards({ metrics }: Props) {
         unit: 'total',
         icon: <AlertTriangle size={16} />,
         color: errorCount > 0 ? 'error' as const : 'success' as const,
-        metricName: 'ngate.request.errors',
+        metricName: 'ishin.request.errors',
         showAsRate: true,
       },
       {
@@ -119,7 +119,7 @@ export function MetricsCards({ metrics }: Props) {
         unit: 'rejected',
         icon: <AlertTriangle size={16} />,
         color: rateLimitRejects > 0 ? 'warning' as const : 'success' as const,
-        metricName: 'ngate.ratelimit.total',
+        metricName: 'ishin.ratelimit.total',
         showAsRate: true,
       },
       {
