@@ -16,6 +16,7 @@
  */
 package dev.nishisan.ishin.gateway.tunnel;
 
+import dev.nishisan.ishin.gateway.cluster.ClusterService;
 import dev.nishisan.ishin.gateway.configuration.TunnelConfiguration;
 import dev.nishisan.utils.ngrid.structures.DistributedMap;
 import org.apache.logging.log4j.LogManager;
@@ -58,6 +59,7 @@ public class TunnelRegistry {
     private final TunnelConfiguration config;
     private final TunnelLoadBalancer loadBalancer;
     private final TunnelMetrics metrics;
+    private final ClusterService clusterService;
 
     // Callbacks para o TunnelEngine abrir/fechar listeners
     private Consumer<Integer> onGroupCreated;   // virtualPort
@@ -75,10 +77,11 @@ public class TunnelRegistry {
 
     private DistributedMap<String, TunnelRegistryEntry> registryMap;
 
-    public TunnelRegistry(TunnelConfiguration config, TunnelMetrics metrics) {
+    public TunnelRegistry(TunnelConfiguration config, TunnelMetrics metrics, ClusterService clusterService) {
         this.config = config;
         this.loadBalancer = TunnelLoadBalancer.forAlgorithm(config.getLoadBalancing());
         this.metrics = metrics;
+        this.clusterService = clusterService;
     }
 
     public void setOnGroupCreated(Consumer<Integer> onGroupCreated) {
@@ -169,6 +172,17 @@ public class TunnelRegistry {
      */
     private void pollRegistry() {
         if (registryMap == null) return;
+
+        // Autodiscovery: derivar registry keys candidatas dos peers do cluster.
+        // Executado a cada ciclo para detectar novos peers dinamicamente.
+        if (clusterService != null) {
+            for (String peerNodeId : clusterService.getClusterPeerNodeIds()) {
+                String candidateKey = REGISTRY_KEY_PREFIX + peerNodeId;
+                if (knownRegistryKeys.add(candidateKey)) {
+                    logger.info("Auto-discovered registry key from cluster peer: {}", candidateKey);
+                }
+            }
+        }
 
         // Coletar todos os member keys atuais para detectar remoções
         ConcurrentHashMap<Integer, List<String>> currentKeys = new ConcurrentHashMap<>();

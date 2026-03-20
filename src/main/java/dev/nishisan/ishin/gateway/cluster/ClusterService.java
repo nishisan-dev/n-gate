@@ -40,6 +40,7 @@ import java.io.Serializable;
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -200,6 +201,33 @@ public class ClusterService {
      */
     public void addLeadershipListener(BiConsumer<Boolean, String> listener) {
         leadershipListeners.add(listener);
+    }
+
+    /**
+     * Retorna os nodeIds dos peers do cluster (excluindo o nó local).
+     * Derivados do bloco {@code cluster.seeds} do {@code adapter.yaml}.
+     * <p>
+     * Usado pelo {@code TunnelRegistry} para autodiscovery dinâmico
+     * de registry keys no DistributedMap.
+     *
+     * @return lista de nodeIds dos peers, ou lista vazia se standalone
+     */
+    public List<String> getClusterPeerNodeIds() {
+        if (!isClusterMode()) return List.of();
+        ClusterConfiguration clusterConfig = configurationManager.loadConfiguration().getCluster();
+        if (clusterConfig == null || clusterConfig.getSeeds() == null) return List.of();
+
+        List<String> peerIds = new ArrayList<>();
+        for (String seed : clusterConfig.getSeeds()) {
+            String[] parts = seed.split(":");
+            if (parts.length >= 1) {
+                String seedNodeId = parts[0];
+                if (!seedNodeId.equals(localNodeId)) {
+                    peerIds.add(seedNodeId);
+                }
+            }
+        }
+        return peerIds;
     }
 
     /**

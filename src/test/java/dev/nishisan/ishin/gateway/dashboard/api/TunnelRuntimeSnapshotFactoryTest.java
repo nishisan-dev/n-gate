@@ -68,7 +68,7 @@ class TunnelRuntimeSnapshotFactoryTest {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         TunnelMetrics metrics = new TunnelMetrics(meterRegistry);
 
-        TunnelRegistry registry = new TunnelRegistry(tunnelConfig, metrics);
+        TunnelRegistry registry = new TunnelRegistry(tunnelConfig, metrics, null);
 
         // Criar grupo manualmente
         VirtualPortGroup group = new VirtualPortGroup(9091, new RoundRobinBalancer());
