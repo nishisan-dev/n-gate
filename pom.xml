@@ -289,7 +289,7 @@
         <dependency>
             <groupId>dev.nishisan</groupId>
             <artifactId>nishi-utils</artifactId>
-            <version>3.2.0</version>
+            <version>3.4.0</version>
         </dependency>
 
         <!-- nishi-utils-spring: bridge StatsUtils → Micrometer -->
