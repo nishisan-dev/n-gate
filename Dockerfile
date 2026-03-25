@@ -7,10 +7,10 @@ FROM maven:3.9.9-eclipse-temurin-21 AS builder
 WORKDIR /build
 COPY pom.xml .
 COPY settings.xml /tmp/settings.xml
-RUN mvn -s /tmp/settings.xml dependency:go-offline -q || true
+RUN mvn -s /tmp/settings.xml dependency:go-offline -U -q || true
 COPY src/ src/
 COPY rules/ rules/
-RUN mvn -s /tmp/settings.xml -DskipTests clean package -q
+RUN mvn -s /tmp/settings.xml -DskipTests clean package -U
 
 # Stage 2: Runtime
 FROM eclipse-temurin:21-jre
