@@ -317,12 +317,17 @@ public class NGridClusterRulesDeployIntegrationTest {
         long deployedVersion = deployResult.body().path("version").asLong();
         assertTrue(deployedVersion >= 1, "Deployed version should be >= 1");
 
-        // 3. Verificar versão no nó 1 (imediato)
-        JsonNode node1Version = getJsonWithAuth(adminUrl(node1, "/version"), API_KEY);
-        assertEquals("active", node1Version.path("status").asText(),
-                "Node 1 should have active bundle");
-        assertEquals(deployedVersion, node1Version.path("version").asLong(),
-                "Node 1 active version should match deployed version");
+        // 3. Aguardar pacientemente versão no nó 1 (pode ter sofrido leader forwarding para o nó 2)
+        log.info("Aguardando nó 1 refletir a versão v{} (pode ter ocorrido leader forwarding)...", deployedVersion);
+        await().atMost(15, TimeUnit.SECONDS)
+                .pollInterval(2, TimeUnit.SECONDS)
+                .untilAsserted(() -> {
+                    JsonNode node1Version = getJsonWithAuth(adminUrl(node1, "/version"), API_KEY);
+                    assertEquals("active", node1Version.path("status").asText(),
+                            "Node 1 should have active bundle");
+                    assertEquals(deployedVersion, node1Version.path("version").asLong(),
+                            "Node 1 active version should match deployed version");
+                });
 
         // 4. Aguardar replicação para nó 2 (via polling do DistributedMap, ~5s interval)
         log.info("Aguardando replicação do bundle v{} para nó 2 (polling interval ~5s)...", deployedVersion);
