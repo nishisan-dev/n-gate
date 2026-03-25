@@ -288,8 +288,8 @@
         <!-- NGrid: distributed structures (DistributedMap, leader election, mesh) -->
         <dependency>
             <groupId>dev.nishisan</groupId>
-            <artifactId>nishi-utils</artifactId>
-            <version>3.4.0</version>
+            <artifactId>nishi-utils-core</artifactId>
+            <version>3.5.0</version>
         </dependency>
 
         <!-- nishi-utils-spring: bridge StatsUtils → Micrometer -->
